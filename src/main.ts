@@ -26,7 +26,7 @@ async function bootstrap() {
       },
     }),
   );
-
+  app.setGlobalPrefix('api');
   app.enableCors({
     origin: process.env.FRONTEND_URL?.split(','),
     credentials: true,
@@ -35,6 +35,7 @@ async function bootstrap() {
   });
 
   app.use(cookieParser());
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
