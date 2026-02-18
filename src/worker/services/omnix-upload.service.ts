@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from 'prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
@@ -16,6 +16,8 @@ import {
 export class OmnixUploadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly logger = new Logger(OmnixUploadService.name);
+  
   // regex to identify VIP keywords
   private readonly vipRegex = /vvip|vip|direk|director|komisaris/i;
 
@@ -38,6 +40,8 @@ export class OmnixUploadService {
       'isFcr',
     );
 
+    this.logger.log(`Starting Omnix Batch Upload Service`);
+
     const filePath = job.data.path;
     if (!fs.existsSync(filePath)) {
       console.error(`File missing at path: ${filePath}`);
@@ -54,6 +58,8 @@ export class OmnixUploadService {
     for await (const worksheet of workbook) {
       for await (const row of worksheet) {
         if (row.number === 1) continue; // Skip Header
+
+
 
         const classification = this.classifyTicket(row);
 
@@ -268,6 +274,7 @@ export class OmnixUploadService {
         rowsToInsert.push(rowData);
 
         if (rowsToInsert.length >= batchSize) {
+          this.logger.log(`Saving batch of ${rowsToInsert.length} Omnix rows...`);
           await this.saveBatch(rowsToInsert);
           rowsToInsert = [];
         }
@@ -280,7 +287,7 @@ export class OmnixUploadService {
 
     // 2. RUN SUMMARIZATION
     // await this.refreshDailyStats();
-
+    this.logger.log(`Omnix Batch Upload Service Completed`);
     return { status: 'Completed' };
   }
 
