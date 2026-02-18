@@ -300,6 +300,30 @@ ORDER BY 1 ASC;
         COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') AND "product" = 'CONNECTIVITY')::int as "connOpen",
         COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') AND "product" = 'SOLUTION')::int as "solOpen",
         
+        -- Logic: Status is Open AND Current Time - Created Time > Limit
+        COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') 
+            AND "product" = 'CONNECTIVITY' 
+            AND (NOW() - "ticket_created") > interval '3 hours')::int as "connOpenOver3h",
+
+        COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') 
+            AND "product" = 'SOLUTION' 
+            AND (NOW() - "ticket_created") > interval '6 hours')::int as "solOpenOver6h",
+
+        -- 3. NEW: Open & Near Time Limit (Warning Zone)
+        -- Logic: Status is Open AND Age is between Warning Threshold and Limit
+        
+        -- Connectivity: > 2 hours but <= 3 hours
+        COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') 
+            AND "product" = 'CONNECTIVITY' 
+            AND (NOW() - "ticket_created") > interval '2 hours' 
+            AND (NOW() - "ticket_created") <= interval '3 hours')::int as "connOpenNear3h",
+
+        -- Solution: > 4 hours but <= 6 hours (Assuming a 2-hour warning window)
+        COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') 
+            AND "product" = 'SOLUTION' 
+            AND (NOW() - "ticket_created") > interval '4 hours' 
+            AND (NOW() - "ticket_created") <= interval '6 hours')::int as "solOpenNear6h",
+
         -- Resolve Time Logic
         COUNT(*) FILTER (WHERE "product" = 'CONNECTIVITY' AND ("resolve_time" - "ticket_created") > interval '3 hours')::int as "connOver3h",
         COUNT(*) FILTER (WHERE "product" = 'SOLUTION' AND ("resolve_time" - "ticket_created") > interval '6 hours')::int as "solOver6h",
