@@ -365,7 +365,10 @@ model LookupKIP {
   id              Int @id @default(autoincrement())
   category        String? 
   subCategory     String?
+  detailCategoryFull String?
   detailCategory  String?
+  detailCategory2 String?
+  compositeKeyOmnix String?
   compositeKey    String?
   fcrNonSatuan    String?
   escToSatuan     String?
