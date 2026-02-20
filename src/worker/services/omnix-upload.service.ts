@@ -24,7 +24,7 @@ export class OmnixUploadService {
   async process(job: Job<any, any, string>): Promise<any> {
     const kipMap = await this.createLookupMap(
       this.prisma.lookupKIP,
-      'compositeKey',
+      'compositeKeyOmnix',
       'product',
     );
 
@@ -36,7 +36,7 @@ export class OmnixUploadService {
 
     const fcrMap = await this.createLookupMap(
       this.prisma.lookupKIP,
-      'compositeKey',
+      'compositeKeyOmnix',
       'isFcr',
     );
 

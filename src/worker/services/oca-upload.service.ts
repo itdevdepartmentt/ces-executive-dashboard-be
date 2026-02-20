@@ -91,7 +91,7 @@ export class OcaUploadService {
       const isVip = this.vipRegex.test(ticketSubject);
 
       const compositeFcrKey =
-        `${row['Category']}_${row['Sub Category']}_${row['Detail Category']}`
+        `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${row['IOT'].trim()}`
           .trim()
           .toLowerCase();
       const fcrStatus = fcrMap.get(compositeFcrKey) || false;
@@ -223,6 +223,11 @@ export class OcaUploadService {
           reason: `Matched ${rule.status} rule on ${rule.column}`,
         };
       }
+    }
+    
+    if((/Livechat/i.test(row['Channel'])) && (/Eskalasi BES/i.test(row['Description']))) {
+      console.log('Matched special case: Live Chat + Eskalasi BES');
+      return { status: 'Double', isValid: false, reason: 'Eskalasi BES in Live Chat' };
     }
 
     // 2. Special Case: The "Valid" Description override from your image

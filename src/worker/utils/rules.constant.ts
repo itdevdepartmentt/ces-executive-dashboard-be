@@ -42,15 +42,21 @@ export const TICKET_RULES = [
   },
   {
     status: 'Double',
-    column: 'Channel',
-    prop: 'channel',
-    check: (val: string) => val === 'Live Chat',
+    column: 'Sub Category',
+    prop: 'subCategory',
+    check: (val: string) => val === 'Leads',
+  },
+  {
+    status: 'Double',
+    column: 'Ticket Subject',
+    prop: 'ticketSubject',
+    check: (val: string) => /ctp/i.test(val || ''),
   },
   {
     status: 'Double',
     column: 'Assignee',
     prop: 'assignee',
-    check: (val: string) => val === 'TL Iwan Hermawan',
+    check: (val: string) => val === 'Tiket Take Out',
   },
   {
     status: 'Double',
