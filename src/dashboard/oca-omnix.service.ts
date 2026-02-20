@@ -183,11 +183,11 @@ ORDER BY 1 ASC;
 
     const [priorityData] = await this.prisma.$queryRaw<any[]>`
    SELECT
-    count(*) filter(where priority = 'High' and "isVip")::int as vip,
-    count(*) filter(where priority = 'High' and "isVip")::int as urgent,
-    count(*) filter(where priority = 'High' and "isPareto")::int as pareto,
-    count(*) filter(where priority = 'High' and (roaming <> '' and roaming <> '-' and roaming notnull))::int as roaming,
-    count(*) filter(where priority = 'High' and "sub_category" ILIKE '%EKSTRA KUOTA%')::int as extra
+    count(*) filter(where "isVip")::int as vip,
+    count(*) filter(where "ticket_subject" ILIKE '%URGENT%')::int as urgent,
+    count(*) filter(where "isPareto")::int as pareto,
+    count(*) filter(where "ticket_subject" ILIKE '%ROAMING%')::int as roaming,
+    count(*) filter(where "ticket_subject" ILIKE '%EKSTRA KUOTA%')::int as extra
 
     from "RawOca" 
     WHERE "ticket_created" >= ${startDate}::timestamptz 
