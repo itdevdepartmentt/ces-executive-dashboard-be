@@ -14,7 +14,7 @@ export class CsatReportSchedulerService {
   constructor(@InjectQueue('excel-queue') private excelQueue: Queue) {}
 
   // Run at 02:00 AM WIB (Asia/Jakarta)
-  @Cron('01 14 * * *', { timeZone: 'Asia/Jakarta' })
+  @Cron(process.env.CRON_SYNC_DAILY_CSAT ?? CronExpression.EVERY_HOUR)
   async handleScheduledReport() {
     this.logger.log('Starting scheduled CSAT Report process...');
 
