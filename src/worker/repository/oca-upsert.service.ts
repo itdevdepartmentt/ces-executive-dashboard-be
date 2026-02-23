@@ -32,6 +32,7 @@ export class OcaUpsertService {
         return `(
         ${ExcelUtils.formatSqlValue(row.ticketNumber)},
         ${ExcelUtils.formatSqlValue(row.ticketSubject)},
+        ${ExcelUtils.formatSqlValue(row.channelOca)},
         ${ExcelUtils.formatSqlValue(row.channel)},
         ${ExcelUtils.formatSqlValue(row.category)},
         ${ExcelUtils.formatSqlValue(row.reporter)},
@@ -93,7 +94,7 @@ export class OcaUpsertService {
     const query = `
     WITH upsert AS(
 INSERT INTO "RawOca" (
-    "ticket_number", "ticket_subject", "channel", "category", 
+    "ticket_number", "ticket_subject", "channel_oca", "channel", "category", 
     "reporter", "assignee", "department", "priority", "last_status",
     "ticket_created", "last_update", "description", 
     "customer_name", "customer_phone", "customer_address", "customer_email",
@@ -111,6 +112,7 @@ VALUES ${values}
 ON CONFLICT ("ticket_number")
 DO UPDATE SET
     "ticket_subject"              = EXCLUDED."ticket_subject",
+    "channel_oca"                 = EXCLUDED."channel_oca",
     "channel"                     = EXCLUDED."channel",
     "category"                    = EXCLUDED."category",
     "reporter"                    = EXCLUDED."reporter",

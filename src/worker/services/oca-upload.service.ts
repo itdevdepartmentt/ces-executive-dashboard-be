@@ -44,6 +44,12 @@ export class OcaUploadService {
       'isFcr',
     );
 
+    const agentMap = await this.createLookupMap(
+      this.prisma.lookupAgent,
+      'namaAgent',
+      'group',
+    );
+
     const filePath = job.data.path;
     if (!fs.existsSync(filePath)) {
       console.error(`File missing at path: ${filePath}`);
@@ -105,6 +111,8 @@ export class OcaUploadService {
         fcrStatus = true;
       }
 
+      const channel = this.determineChannel(row, agentMap);
+
       // --- 2. RUN SLA CALCULATION ---
       // Now we pass the 'derivedProduct' as 'Kolom BF'
       const slaStatus = calculateSlaStatus({
@@ -128,7 +136,8 @@ export class OcaUploadService {
         // EXACT header string from CSV
         ticketNumber: row['Ticket Number'],
         ticketSubject: row['Ticket Subject'],
-        channel: row['Channel'],
+        channelOca: row['Channel'],
+        channel: channel,
         category: row['Category'],
         reporter: row['Reporter'],
         assignee: row['Assignee'],
@@ -295,5 +304,35 @@ export class OcaUploadService {
     const semicolonCount = (firstLine.match(/;/g) || []).length;
 
     return semicolonCount > commaCount ? ';' : ',';
+  }
+
+  determineChannel(row: any, agentMap: Map<string, string>): string {
+    const department = row['Department'] || '';
+
+    if (/leads/i.test(department)) {
+      return 'Leads';
+    } else if (/survey/i.test(department)) {
+      return 'Survey';
+    } else if (/GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)) {
+      return 'Email';
+    } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
+      return 'Livechat';
+    }
+
+    if (/#CCCorp/i.test(row['Ticket Subject'] || '')) {
+      return 'Call Center';
+    }
+
+    const agentName = row['Assignee'] || '';
+    const agentGroup = agentMap.get(agentName.trim().toLowerCase());
+
+    if (/cc/i.test(agentGroup || '')) {
+      return 'Call Center';
+    } else if (/live chat/i.test(agentGroup || '')) {
+      return 'Livechat';
+    }
+
+    // Default to original value if no rules matched
+    return row['Channel'];
   }
 }

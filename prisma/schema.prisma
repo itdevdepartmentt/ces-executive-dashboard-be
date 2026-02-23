@@ -197,6 +197,7 @@ model RawOca {
   id                      Int       @id @default(autoincrement())
   ticketNumber            String    @unique @map("ticket_number")
   ticketSubject           String?   @map("ticket_subject")
+  channelOca              String?   @map("channel_oca")
   channel                 String?   @map("channel")
   category                String?   @map("category")
   reporter                String?   @map("reporter")
@@ -381,6 +382,14 @@ model LookupKIP {
   @@index([isFcr])
   @@index([product])
   @@map("lookup_kip")
+}
+
+model LookupAgent {
+  id              Int @id @default(autoincrement())
+  namaAgent       String? @map("nama_agent")
+  group           String?
+
+  @@map("lookup_agent")
 }
 
 enum UserRole {

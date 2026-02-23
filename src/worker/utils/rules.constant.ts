@@ -44,7 +44,7 @@ export const TICKET_RULES = [
     status: 'Double',
     column: 'Sub Category',
     prop: 'subCategory',
-    check: (val: string) => val === 'Leads',
+    check: (val: string) => /leads/i.test(val || ''),
   },
   {
     status: 'Double',
