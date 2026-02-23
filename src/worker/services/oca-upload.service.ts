@@ -94,9 +94,16 @@ export class OcaUploadService {
         `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${row['IOT'].trim()}`
           .trim()
           .toLowerCase();
-      const fcrStatus = fcrMap.get(compositeFcrKey) || false;
+      let fcrStatus = fcrMap.get(compositeFcrKey) || false;
 
-      const derivedProduct = kipMap.get(compositeFcrKey || '-');
+      let derivedProduct = kipMap.get(compositeFcrKey || '-');
+
+      if (!derivedProduct && /iot/i.test(row['Sub Category']) && /ENGINEER/i.test(row['Department']) ) {
+        derivedProduct = 'SOLUTION'; 
+      } else {
+        derivedProduct = 'CONNECTIVITY';
+        fcrStatus = true;
+      }
 
       // --- 2. RUN SLA CALCULATION ---
       // Now we pass the 'derivedProduct' as 'Kolom BF'
