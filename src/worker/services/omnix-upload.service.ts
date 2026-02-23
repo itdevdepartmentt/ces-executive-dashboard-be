@@ -17,9 +17,103 @@ export class OmnixUploadService {
   constructor(private readonly prisma: PrismaService) {}
 
   private readonly logger = new Logger(OmnixUploadService.name);
-  
+
   // regex to identify VIP keywords
   private readonly vipRegex = /vvip|vip|direk|director|komisaris/i;
+
+  /**
+   * Mapping of field names to expected Excel column header names.
+   * The lookup is case-insensitive. Update the values here if your Excel headers differ.
+   */
+  private readonly HEADERS = {
+    ticketId: 'ticket_id',
+    remark: 'remark',
+    subject: 'subject',
+    priorityId: 'priority_id',
+    priorityName: 'priority_name',
+    ticketStatusId: 'ticket_status_id',
+    ticketStatusName: 'ticket_status_name',
+    unitId: 'unit_id',
+    unitName: 'unit_name',
+    informantId: 'informant_id',
+    informantName: 'informant_name',
+    informantHp: 'informant_hp',
+    informantEmail: 'informant_email',
+    customerId: 'customer_id',
+    customerName: 'customer_name',
+    customerHp: 'customer_hp',
+    customerEmail: 'customer_email',
+    dateOriginInteraction: 'date_origin_interaction',
+    dateStartInteraction: 'date_start_interaction',
+    dateOpen: 'date_open',
+    dateClose: 'date_close',
+    dateLastUpdate: 'date_last_update',
+    isEscalated: 'is_escalated',
+    createdById: 'created_by_id',
+    createdByName: 'created_by_name',
+    updatedById: 'updated_by_id',
+    updatedByName: 'updated_by_name',
+    channelId: 'channel_id',
+    sessionId: 'session_id',
+    categoryId: 'category_id',
+    categoryName: 'category_name',
+    dateCreatedAt: 'date_created_at',
+    sla: 'sla',
+    channelName: 'channel_name',
+    mainCategory: 'mainCategory',
+    category: 'category',
+    subCategory: 'subCategory',
+    detailSubCategory: 'detailSubCategory',
+    detailSubCategory2: 'detailSubCategory2',
+    datePickupInteraction: 'date_pickup_interaction',
+    dateEndInteraction: 'date_end_interaction',
+    dateFirstPickupInteraction: 'date_first_pickup_interaction',
+    dateFirstResponseInteraction: 'date_first_response_interaction',
+    account: 'account',
+    accountName: 'account_name',
+    informantMemberId: 'informant_member_id',
+    customerMemberId: 'customer_member_id',
+    sentimentIncoming: 'sentiment_incoming',
+    sentimentOutgoing: 'sentiment_outgoing',
+    sentimentAll: 'sentiment_all',
+    feedback: 'feedback',
+    sentimentService: 'sentiment_service',
+    parentId: 'parent_id',
+    countMerged: 'count_merged',
+    sourceId: 'source_id',
+    sourceName: 'source_name',
+    contact: 'contact',
+    surveyName: 'survey_name',
+    interactionAdditionalInfo: 'interaction_additional_info',
+    surveyId: 'survey_id',
+    respondentId: 'respondent_id',
+    ticketIdOld: 'ticket_id_old',
+    waitingTime: 'waitingTime',
+    serviceTime: 'serviceTime',
+    responseTime: 'responseTime',
+    handlingTime: 'handlingTime',
+    duration: 'duration',
+    acw: 'acw',
+    ticketPerusahaan: 'ticket_perusahaan',
+    ticketAmount: 'ticket_Amount',
+    ticketRemedyNo: 'ticket_Remedy_NO',
+    ticketITAO: 'ticket_IT/AO',
+    ticketProject: 'ticket_Project',
+    slaSecond: 'sla_second',
+    ticketIdMasking: 'ticketId_masking',
+    informantNamaCorp: 'informant_nama_corp',
+    customerNamaCorp: 'customer_nama_corp',
+    datePending: 'date_pending',
+    dateResolve: 'date_resolve',
+    dateEskalasiEbo: 'date_eskalasi_ebo',
+    dateEskalasiIt: 'date_eskalasi_it',
+    dateEskalasiNo: 'date_eskalasi_no',
+    dateEskalasiPartner: 'date_eskalasi_partner',
+    dateMenungguApprovalBillco: 'date_menunggu_approval_billco',
+    customerInstagramId: 'customer_instagram_id',
+    customerPhone: 'customer_phone',
+    customerFacebookId: 'customer_facebook_id',
+  };
 
   async process(job: Job<any, any, string>): Promise<any> {
     const kipMap = await this.createLookupMap(
@@ -54,23 +148,23 @@ export class OmnixUploadService {
 
     // 1. Stream the Excel file
     const workbook = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {});
+    let headerMap: Map<string, number> = new Map();
 
     for await (const worksheet of workbook) {
       for await (const row of worksheet) {
-        if (row.number === 1) continue; // Skip Header
+        if (row.number === 1) {
+          headerMap = this.buildHeaderMap(row);
+          continue;
+        }
 
+        // Helper aliases for clean header-based cell access
+        const H = this.HEADERS;
+        const col = (headerName: string) =>
+          this.getCellByHeader(row, headerMap, headerName);
 
+        const classification = this.classifyTicket(row, headerMap);
 
-        const classification = this.classifyTicket(row);
-
-        // const rawCategory = row.getCell(36).text;
-        // const normalizedSubCategory =
-        //   typeof rawCategory === 'string'
-        //     ? rawCategory.trim().toLowerCase()
-        //     : '';
-        // const derivedProduct = kipMap.get(normalizedSubCategory || '');
-
-        const rawNamaPerusahaan = row.getCell(69).text;
+        const rawNamaPerusahaan = col(H.ticketPerusahaan).text;
         const normalizedNamaPerusahaan =
           typeof rawNamaPerusahaan === 'string'
             ? rawNamaPerusahaan.trim().toLowerCase()
@@ -79,11 +173,11 @@ export class OmnixUploadService {
           normalizedNamaPerusahaan || '',
         );
 
-        const ticketSubject = row.getCell(3).text || '';
+        const ticketSubject = col(H.subject).text || '';
         const isVip = this.vipRegex.test(ticketSubject);
 
         const compositeFcrKey =
-          `${row.getCell(35).text}_${row.getCell(36).text}_${row.getCell(37).text}`
+          `${col(H.mainCategory).text}_${col(H.category).text}_${col(H.subCategory).text}`
             .trim()
             .toLowerCase();
         const fcrStatus = fcrMap.get(compositeFcrKey) || false;
@@ -91,31 +185,18 @@ export class OmnixUploadService {
         const derivedProduct = kipMap.get(compositeFcrKey || '-');
 
         // --- 2. RUN SLA CALCULATION ---
-        // Now we pass the 'derivedProduct' as 'Kolom BF'
         const slaStatus = classification.isValid
           ? calculateSlaStatus({
               product: derivedProduct,
-              ticketCreated: row.getCell(19).text,
-              resolveTime: row.getCell(21).text,
+              ticketCreated: col(H.dateStartInteraction).text,
+              resolveTime: col(H.dateClose).text,
             })
           : false;
 
-        // const fcrStatus = calculateFcrStatus({
-        //   'ID Remedy_NO': row.getCell(71).text,
-        //   'Eskalasi/ID Remedy_IT/AO/EMS': row.getCell(72).text,
-        //   'Jumlah MSISDN': row['jumlah_msisdn']
-        // });
-
         const typeEskalasi = determineEskalasi({
-          'ID Remedy_NO': row.getCell(71).text,
-          'Eskalasi/ID Remedy_IT/AO/EMS': row.getCell(72).text,
+          'ID Remedy_NO': col(H.ticketRemedyNo).text,
+          'Eskalasi/ID Remedy_IT/AO/EMS': col(H.ticketITAO).text,
         });
-
-        // SAFE PARSING LOGIC
-        // Handle empty dates or invalid scores gracefully
-        const createdAtRaw = row.getCell(2).value;
-        const answeredAtRaw = row.getCell(4).value;
-        const scoreRaw = row.getCell(9).value; // "Numeric" column
 
         // Helper to safely parse Integers (returns null if empty or invalid)
         const parseIntSafe = (value: any) => {
@@ -134,131 +215,145 @@ export class OmnixUploadService {
 
         const rowData = {
           // --- 1. Basic Ticket Info ---
-          ticketId: parseIntSafe(row.getCell(1).value),
-          remark: row.getCell(2).text,
-          subject: row.getCell(3).text,
-          priorityId: parseIntSafe(row.getCell(4).value),
-          priorityName: row.getCell(5).text,
-          ticketStatusId: parseIntSafe(row.getCell(6).value),
-          ticketStatusName: row.getCell(7).text,
-          unitId: parseIntSafe(row.getCell(8).value),
-          unitName: row.getCell(9).text,
+          ticketId: parseIntSafe(col(H.ticketId).value),
+          remark: col(H.remark).text,
+          subject: col(H.subject).text,
+          priorityId: parseIntSafe(col(H.priorityId).value),
+          priorityName: col(H.priorityName).text,
+          ticketStatusId: parseIntSafe(col(H.ticketStatusId).value),
+          ticketStatusName: col(H.ticketStatusName).text,
+          unitId: parseIntSafe(col(H.unitId).value),
+          unitName: col(H.unitName).text,
 
           // --- 2. Informant & Customer ---
-          informantId: row.getCell(10).text,
-          informantName: row.getCell(11).text,
-          informantHp: row.getCell(12).text,
-          informantEmail: row.getCell(13).text,
-          customerId: row.getCell(14).text,
-          customerName: row.getCell(15).text,
-          customerHp: row.getCell(16).text,
-          customerEmail: row.getCell(17).text,
+          informantId: col(H.informantId).text,
+          informantName: col(H.informantName).text,
+          informantHp: col(H.informantHp).text,
+          informantEmail: col(H.informantEmail).text,
+          customerId: col(H.customerId).text,
+          customerName: col(H.customerName).text,
+          customerHp: col(H.customerHp).text,
+          customerEmail: col(H.customerEmail).text,
 
           // --- 3. Interaction Dates ---
           dateOriginInteraction: ExcelUtils.parseExcelDate(
-            row.getCell(18).value,
+            col(H.dateOriginInteraction).value,
           ),
           dateStartInteraction: ExcelUtils.parseExcelDate(
-            row.getCell(19).value,
+            col(H.dateStartInteraction).value,
           ),
-          dateOpen: ExcelUtils.parseExcelDate(row.getCell(20).value),
-          dateClose: ExcelUtils.parseExcelDate(row.getCell(21).value),
-          dateLastUpdate: ExcelUtils.parseExcelDate(row.getCell(22).value),
+          dateOpen: ExcelUtils.parseExcelDate(col(H.dateOpen).value),
+          dateClose: ExcelUtils.parseExcelDate(col(H.dateClose).value),
+          dateLastUpdate: ExcelUtils.parseExcelDate(
+            col(H.dateLastUpdate).value,
+          ),
 
           // --- 4. Categorization ---
-          isEscalated: row.getCell(23).text,
-          createdById: parseIntSafe(row.getCell(24).value),
-          createdByName: row.getCell(25).text,
-          updatedById: parseIntSafe(row.getCell(26).value),
-          updatedByName: row.getCell(27).text,
-          channelId: parseIntSafe(row.getCell(28).value),
-          sessionId: row.getCell(29).text,
-          categoryId: parseIntSafe(row.getCell(30).value),
-          categoryName: row.getCell(31).text,
-          dateCreatedAt: ExcelUtils.parseExcelDate(row.getCell(32).value),
+          isEscalated: col(H.isEscalated).text,
+          createdById: parseIntSafe(col(H.createdById).value),
+          createdByName: col(H.createdByName).text,
+          updatedById: parseIntSafe(col(H.updatedById).value),
+          updatedByName: col(H.updatedByName).text,
+          channelId: parseIntSafe(col(H.channelId).value),
+          sessionId: col(H.sessionId).text,
+          categoryId: parseIntSafe(col(H.categoryId).value),
+          categoryName: col(H.categoryName).text,
+          dateCreatedAt: ExcelUtils.parseExcelDate(col(H.dateCreatedAt).value),
 
           // --- 5. Details ---
-          sla: row.getCell(33).text,
-          channelName: row.getCell(34).text,
-          mainCategory: row.getCell(35).text,
-          category: row.getCell(36).text,
-          subCategory: row.getCell(37).text,
-          detailSubCategory: row.getCell(38).text,
-          detailSubCategory2: row.getCell(39).text,
+          sla: col(H.sla).text,
+          channelName: col(H.channelName).text,
+          mainCategory: col(H.mainCategory).text,
+          category: col(H.category).text,
+          subCategory: col(H.subCategory).text,
+          detailSubCategory: col(H.detailSubCategory).text,
+          detailSubCategory2: col(H.detailSubCategory2).text,
 
           // --- 6. More Dates ---
           datePickupInteraction: ExcelUtils.parseExcelDate(
-            row.getCell(40).value,
+            col(H.datePickupInteraction).value,
           ),
-          dateEndInteraction: ExcelUtils.parseExcelDate(row.getCell(41).value),
+          dateEndInteraction: ExcelUtils.parseExcelDate(
+            col(H.dateEndInteraction).value,
+          ),
           dateFirstPickupInteraction: ExcelUtils.parseExcelDate(
-            row.getCell(42).value,
+            col(H.dateFirstPickupInteraction).value,
           ),
           dateFirstResponseInteraction: ExcelUtils.parseExcelDate(
-            row.getCell(43).value,
+            col(H.dateFirstResponseInteraction).value,
           ),
 
           // --- 7. Account & Sentiment ---
-          account: row.getCell(44).text,
-          accountName: row.getCell(45).text,
-          informantMemberId: row.getCell(46).text,
-          customerMemberId: row.getCell(47).text,
-          sentimentIncoming: row.getCell(48).text,
-          sentimentOutgoing: row.getCell(49).text,
-          sentimentAll: row.getCell(50).text,
-          feedback: row.getCell(51).text,
-          sentimentService: row.getCell(52).text,
+          account: col(H.account).text,
+          accountName: col(H.accountName).text,
+          informantMemberId: col(H.informantMemberId).text,
+          customerMemberId: col(H.customerMemberId).text,
+          sentimentIncoming: col(H.sentimentIncoming).text,
+          sentimentOutgoing: col(H.sentimentOutgoing).text,
+          sentimentAll: col(H.sentimentAll).text,
+          feedback: col(H.feedback).text,
+          sentimentService: col(H.sentimentService).text,
 
           // --- 8. Merging & Source ---
-          parentId: row.getCell(53).text,
-          countMerged: parseIntSafe(row.getCell(54).value),
-          sourceId: parseIntSafe(row.getCell(55).value),
-          sourceName: row.getCell(56).text,
+          parentId: col(H.parentId).text,
+          countMerged: parseIntSafe(col(H.countMerged).value),
+          sourceId: parseIntSafe(col(H.sourceId).value),
+          sourceName: col(H.sourceName).text,
 
           // --- 9. JSON Data ---
-          contact: parseJsonSafe(row.getCell(57).text),
+          contact: parseJsonSafe(col(H.contact).text),
 
           // --- 10. Survey & Additional ---
-          surveyName: row.getCell(58).text,
-          interactionAdditionalInfo: parseJsonSafe(row.getCell(59).text), // Assuming this is also JSON
-          surveyId: row.getCell(60).text,
-          respondentId: row.getCell(61).text,
-          ticketIdOld: row.getCell(62).text,
+          surveyName: col(H.surveyName).text,
+          interactionAdditionalInfo: parseJsonSafe(
+            col(H.interactionAdditionalInfo).text,
+          ), // Assuming this is also JSON
+          surveyId: col(H.surveyId).text,
+          respondentId: col(H.respondentId).text,
+          ticketIdOld: col(H.ticketIdOld).text,
 
           // --- 11. Durations ---
-          waitingTime: row.getCell(63).text,
-          serviceTime: row.getCell(64).text,
-          responseTime: row.getCell(65).text,
-          handlingTime: row.getCell(66).text,
-          duration: row.getCell(67).text,
-          acw: row.getCell(68).text,
+          waitingTime: col(H.waitingTime).text,
+          serviceTime: col(H.serviceTime).text,
+          responseTime: col(H.responseTime).text,
+          handlingTime: col(H.handlingTime).text,
+          duration: col(H.duration).text,
+          acw: col(H.acw).text,
 
           // --- 12. Specific Custom Fields ---
-          ticketPerusahaan: row.getCell(69).text,
-          ticketAmount: row.getCell(70).text,
-          ticketRemedyNo: row.getCell(71).text,
-          ticketITAO: row.getCell(72).text, // Mapped from "ticket_IT/AO"
-          ticketProject: row.getCell(73).text,
-          slaSecond: parseIntSafe(row.getCell(74).value),
-          ticketIdMasking: row.getCell(75).text,
-          informantNamaCorp: row.getCell(76).text,
-          customerNamaCorp: row.getCell(77).text,
+          ticketPerusahaan: col(H.ticketPerusahaan).text,
+          ticketAmount: col(H.ticketAmount).text,
+          ticketRemedyNo: col(H.ticketRemedyNo).text,
+          ticketITAO: col(H.ticketITAO).text, // Mapped from "ticket_IT/AO"
+          ticketProject: col(H.ticketProject).text,
+          slaSecond: parseIntSafe(col(H.slaSecond).value),
+          ticketIdMasking: col(H.ticketIdMasking).text,
+          informantNamaCorp: col(H.informantNamaCorp).text,
+          customerNamaCorp: col(H.customerNamaCorp).text,
 
           // --- 13. Escalation Dates ---
-          datePending: ExcelUtils.parseExcelDate(row.getCell(78).value),
-          dateResolve: ExcelUtils.parseExcelDate(row.getCell(79).value),
-          dateEskalasiEbo: ExcelUtils.parseExcelDate(row.getCell(80).value),
-          dateEskalasiIt: ExcelUtils.parseExcelDate(row.getCell(81).value),
-          dateEskalasiNo: ExcelUtils.parseExcelDate(row.getCell(82).value),
-          dateEskalasi: ExcelUtils.parseExcelDate(row.getCell(83).value),
+          datePending: ExcelUtils.parseExcelDate(col(H.datePending).value),
+          dateResolve: ExcelUtils.parseExcelDate(col(H.dateResolve).value),
+          dateEskalasiEbo: ExcelUtils.parseExcelDate(
+            col(H.dateEskalasiEbo).value,
+          ),
+          dateEskalasiIt: ExcelUtils.parseExcelDate(
+            col(H.dateEskalasiIt).value,
+          ),
+          dateEskalasiNo: ExcelUtils.parseExcelDate(
+            col(H.dateEskalasiNo).value,
+          ),
+          dateEskalasiPartner: ExcelUtils.parseExcelDate(
+            col(H.dateEskalasiPartner).value,
+          ),
 
           // --- 14. Final Fields ---
-          partner: row.getCell(84).text,
-          dateMenunggu: ExcelUtils.parseExcelDate(row.getCell(85).value),
-          approvalBillco: row.getCell(86).text,
-          customerInstagramId: row.getCell(87).text,
-          customerPhone: row.getCell(88).text,
-          customerFacebookId: row.getCell(89).text,
+          dateMenungguApprovalBillco: ExcelUtils.parseExcelDate(
+            col(H.dateMenungguApprovalBillco).value,
+          ),
+          customerInstagramId: col(H.customerInstagramId).text,
+          customerPhone: col(H.customerPhone).text,
+          customerFacebookId: col(H.customerFacebookId).text,
 
           // row tambahan
           validationStatus: classification.status,
@@ -274,7 +369,9 @@ export class OmnixUploadService {
         rowsToInsert.push(rowData);
 
         if (rowsToInsert.length >= batchSize) {
-          this.logger.log(`Saving batch of ${rowsToInsert.length} Omnix rows...`);
+          this.logger.log(
+            `Saving batch of ${rowsToInsert.length} Omnix rows...`,
+          );
           await this.saveBatch(rowsToInsert);
           rowsToInsert = [];
         }
@@ -408,10 +505,8 @@ export class OmnixUploadService {
         ${ExcelUtils.formatSqlValue(row.dateEskalasiEbo)},
         ${ExcelUtils.formatSqlValue(row.dateEskalasiIt)},
         ${ExcelUtils.formatSqlValue(row.dateEskalasiNo)},
-        ${ExcelUtils.formatSqlValue(row.dateEskalasi)},
-        ${ExcelUtils.formatSqlValue(row.partner)},
-        ${ExcelUtils.formatSqlValue(row.dateMenunggu)},
-        ${ExcelUtils.formatSqlValue(row.approvalBillco)},
+        ${ExcelUtils.formatSqlValue(row.dateEskalasiPartner)},
+        ${ExcelUtils.formatSqlValue(row.dateMenungguApprovalBillco)},
         ${ExcelUtils.formatSqlValue(row.customerInstagramId)},
         ${ExcelUtils.formatSqlValue(row.customerPhone)},
         ${ExcelUtils.formatSqlValue(row.customerFacebookId)},
@@ -451,8 +546,8 @@ export class OmnixUploadService {
           "ticket_IT/AO", "ticket_Project", "sla_second", "ticketId_masking",
           "informant_nama_corp", "customer_nama_corp",
           "date_pending", "date_resolve", 
-          "date_eskalasi ebo", "date_eskalasi it", "date_eskalasi no", "date_eskalasi",
-          "partner", "date_menunggu", "approval billco",
+          "date_eskalasi_ebo", "date_eskalasi_it", "date_eskalasi_no", "date_eskalasi_partner",
+          "date_menunggu_approval_billco",
           "customer_instagram_id", "customer_phone", "customer_facebook_id",
           "validationStatus", "statusTiket", "product","inSla", "isFcr", "eskalasi", "isVip", "isPareto"
       )
@@ -537,13 +632,11 @@ export class OmnixUploadService {
           "customer_nama_corp" = EXCLUDED."customer_nama_corp",
           "date_pending" = EXCLUDED."date_pending",
           "date_resolve" = EXCLUDED."date_resolve",
-          "date_eskalasi ebo" = EXCLUDED."date_eskalasi ebo",
-          "date_eskalasi it" = EXCLUDED."date_eskalasi it",
-          "date_eskalasi no" = EXCLUDED."date_eskalasi no",
-          "date_eskalasi" = EXCLUDED."date_eskalasi",
-          "partner" = EXCLUDED."partner",
-          "date_menunggu" = EXCLUDED."date_menunggu",
-          "approval billco" = EXCLUDED."approval billco",
+          "date_eskalasi_ebo" = EXCLUDED."date_eskalasi_ebo",
+          "date_eskalasi_it" = EXCLUDED."date_eskalasi_it",
+          "date_eskalasi_no" = EXCLUDED."date_eskalasi_no",
+          "date_eskalasi_partner" = EXCLUDED."date_eskalasi_partner",
+          "date_menunggu_approval_billco" = EXCLUDED."date_menunggu_approval_billco",
           "customer_instagram_id" = EXCLUDED."customer_instagram_id",
           "customer_phone" = EXCLUDED."customer_phone",
           "customer_facebook_id" = EXCLUDED."customer_facebook_id",
@@ -561,12 +654,39 @@ export class OmnixUploadService {
     await this.prisma.$executeRawUnsafe(query);
   }
 
-  private classifyTicket(row: any) {
+  /**
+   * Build a header-to-column-index map from the first row of the Excel sheet.
+   */
+  private buildHeaderMap(row: any): Map<string, number> {
+    const map = new Map<string, number>();
+    row.eachCell({ includeEmpty: false }, (cell: any, colNumber: number) => {
+      if (cell.text) {
+        map.set(cell.text.trim().toLowerCase(), colNumber);
+      }
+    });
+    return map;
+  }
+
+  /**
+   * Get a cell from a row by its header name using the header map.
+   * Returns a safe default if the header is not found.
+   */
+  private getCellByHeader(
+    row: any,
+    headerMap: Map<string, number>,
+    headerName: string,
+  ): { text: string; value: any } {
+    const colIndex = headerMap.get(headerName.trim().toLowerCase());
+    if (!colIndex) {
+      return { text: '', value: null };
+    }
+    return row.getCell(colIndex);
+  }
+
+  private classifyTicket(row: any, headerMap: Map<string, number>) {
     // 1. Iterate through defined rules
     for (const rule of TICKET_RULES_OMNIX) {
-      // Get value safely (handle casing if needed)
-      // const cellValue = row[rule.column];
-      const cellValue = row.getCell(rule.column).text;
+      const cellValue = this.getCellByHeader(row, headerMap, rule.column).text;
 
       // If rule matches, return that status immediately (Fail-Fast)
       if (cellValue && rule.check(cellValue)) {
