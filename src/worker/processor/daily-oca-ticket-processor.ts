@@ -369,12 +369,13 @@ export class DailyOcaTicketProcessor extends WorkerHost {
 
   determineChannel(row: any, agentMap: Map<string, string>): string {
     const department = row.department || '';
-    const channel = row['Channel'] || '';
+    const channel = row.channelOca || '';
 
     if (
       /email|form/i.test(channel) &&
       /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
     ) {
+      this.logger.log(`Matched email override for department ${department} and channel ${channel}`);
       return 'email';
     }
 
