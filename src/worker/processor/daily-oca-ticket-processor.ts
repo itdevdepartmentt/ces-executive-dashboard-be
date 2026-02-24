@@ -369,6 +369,14 @@ export class DailyOcaTicketProcessor extends WorkerHost {
 
   determineChannel(row: any, agentMap: Map<string, string>): string {
     const department = row.department || '';
+    const channel = row['Channel'] || '';
+
+    if (
+      /email|form/i.test(channel) &&
+      /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
+    ) {
+      return 'email';
+    }
 
     if (/leads/i.test(department)) {
       return 'leads';

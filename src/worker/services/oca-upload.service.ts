@@ -13,6 +13,7 @@ import {
   TICKET_RULES,
 } from '../utils/rules.constant';
 import { OcaUpsertService } from '../repository/oca-upsert.service';
+import { channel } from 'process';
 
 @Injectable()
 export class OcaUploadService {
@@ -104,8 +105,12 @@ export class OcaUploadService {
 
       let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
-      if (!derivedProduct && /iot/i.test(row['Sub Category']) && /ENGINEER/i.test(row['Department']) ) {
-        derivedProduct = 'SOLUTION'; 
+      if (
+        !derivedProduct &&
+        /iot/i.test(row['Sub Category']) &&
+        /ENGINEER/i.test(row['Department'])
+      ) {
+        derivedProduct = 'SOLUTION';
       } else {
         derivedProduct = 'CONNECTIVITY';
         fcrStatus = true;
@@ -240,10 +245,17 @@ export class OcaUploadService {
         };
       }
     }
-    
-    if((/Livechat/i.test(row['Channel'])) && (/Eskalasi BES/i.test(row['Description']))) {
+
+    if (
+      /Livechat/i.test(row['Channel']) &&
+      /Eskalasi BES/i.test(row['Description'])
+    ) {
       console.log('Matched special case: Live Chat + Eskalasi BES');
-      return { status: 'Double', isValid: false, reason: 'Eskalasi BES in Live Chat' };
+      return {
+        status: 'Double',
+        isValid: false,
+        reason: 'Eskalasi BES in Live Chat',
+      };
     }
 
     // 2. Special Case: The "Valid" Description override from your image
@@ -308,12 +320,22 @@ export class OcaUploadService {
 
   determineChannel(row: any, agentMap: Map<string, string>): string {
     const department = row['department'] || '';
+    const channel = row['Channel'] || '';
+
+    if (
+      /email|form/i.test(channel) &&
+      /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
+    ) {
+      return 'email';
+    }
 
     if (/leads/i.test(department)) {
       return 'leads';
     } else if (/survey/i.test(department)) {
       return 'survey';
-    } else if (/GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)) {
+    } else if (
+      /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)
+    ) {
       return 'email';
     } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
       return 'livechat';
