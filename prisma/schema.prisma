@@ -84,6 +84,7 @@ model RawOmnix {
   updatedById                  Int?      @map("updated_by_id")
   updatedByName                String?   @map("updated_by_name")
   channelId                    Int?      @map("channel_id")
+  channelNameOmnix             String?   @map("channel_name_omnix")
   channelName                  String?   @map("channel_name")
   sessionId                    String?   @map("session_id")
   categoryId                   Int?      @map("category_id")

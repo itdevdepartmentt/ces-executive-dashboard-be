@@ -94,9 +94,8 @@ export const TICKET_RULES_OMNIX = [
   {
     status: 'Double',
     column: 'feedback',
-    // Pre-compiled Regex for speed
     regex: createRegex(
-      'spam / out of topic / double ticket / dobel ticket / double tiket / dobel tiket / balikan ems / balasan ems',
+      'tes / test',
     ),
     check: function (val: string) {
       return this.regex.test(val || '');
@@ -105,11 +104,31 @@ export const TICKET_RULES_OMNIX = [
   {
     status: 'Double',
     column: 'subCategory',
-    regex: createRegex('Out Of Topic / Interaksi terputus / Pelanggan iseng'),
+    regex: createRegex('Out Of Topic / Pelanggan iseng'),
     check: function (val: string) {
       return this.regex.test(val || '');
     },
   },
+  {
+    status: 'Double',
+    column: 'customerName',
+    check: (val: string) => /\+6281385534422|~G|Achie dewi|dayat|EPER Agent|faisal|INDRA GUNAWAN\/INFOMEDIA|Insan|Sandi'7|R-Nie|SANDI\/INFOMEDIA|Farid Kurniawan|Gusti Infomedia Nusatara|Dara Muthia Herda|cestsel247/i.test(val || ''),
+  },
+  {
+    status: 'Double',
+    column: 'channelName',
+    check: (val: string) => /FB Comment|IG Comment|Manual/i.test(val || ''),
+  },
+  {
+    status: 'Double',
+    column: 'subject',
+    check: (val: string) => /tes|test/i.test(val || ''),
+  },
+  {
+    status: 'Double',
+    column: 'remark',
+    check: (val: string) => /tes|test/i.test(val || ''),
+  }
 ];
 
 // Config constants for readability (and easy changing later)

@@ -213,6 +213,8 @@ export class OmnixUploadService {
           }
         };
 
+        const channel = this.determineChannel(row, col, H);
+
         const rowData = {
           // --- 1. Basic Ticket Info ---
           ticketId: parseIntSafe(col(H.ticketId).value),
@@ -262,7 +264,8 @@ export class OmnixUploadService {
 
           // --- 5. Details ---
           sla: col(H.sla).text,
-          channelName: col(H.channelName).text,
+          channelNameOmnix: col(H.channelName).text,
+          channelName: channel,
           mainCategory: col(H.mainCategory).text,
           category: col(H.category).text,
           subCategory: col(H.subCategory).text,
@@ -456,6 +459,7 @@ export class OmnixUploadService {
         ${ExcelUtils.formatSqlValue(row.categoryName)},
         ${ExcelUtils.formatSqlValue(row.dateCreatedAt)},
         ${ExcelUtils.formatSqlValue(row.sla)},
+        ${ExcelUtils.formatSqlValue(row.channelNameOmnix)},
         ${ExcelUtils.formatSqlValue(row.channelName)},
         ${ExcelUtils.formatSqlValue(row.mainCategory)},
         ${ExcelUtils.formatSqlValue(row.category)},
@@ -532,7 +536,7 @@ export class OmnixUploadService {
           "date_close", "date_last_update", "is_escalated",
           "created_by_id", "created_by_name", "updated_by_id", "updated_by_name",
           "channel_id", "session_id", "category_id", "category_name",
-          "date_created_at", "sla", "channel_name",
+          "date_created_at", "sla", "channel_name_omnix", "channel_name",
           "mainCategory", "category", "subCategory", "detailSubCategory", "detailSubCategory2",
           "date_pickup_interaction", "date_end_interaction", 
           "date_first_pickup_interaction", "date_first_response_interaction",
@@ -586,6 +590,7 @@ export class OmnixUploadService {
           "category_name" = EXCLUDED."category_name",
           "date_created_at" = EXCLUDED."date_created_at",
           "sla" = EXCLUDED."sla",
+          "channel_name_omnix" = EXCLUDED."channel_name_omnix",
           "channel_name" = EXCLUDED."channel_name",
           "mainCategory" = EXCLUDED."mainCategory",
           "category" = EXCLUDED."category",
@@ -698,14 +703,6 @@ export class OmnixUploadService {
       }
     }
 
-    // 2. Special Case: The "Valid" Description override from your image
-    // If the image implies "completed by hia" overrides others, put this BEFORE the loop.
-    // If it implies "it's valid if it contains this", we handle it here as a fallback.
-    // if (row['description'] && /completed by hia/i.test(row['description'])) {
-    //      return { status: 'Valid', isValid: true, reason: 'Completed by HIA' };
-    // }
-
-    // 3. Default Fallback (Row 11 in your image)
     return { status: 'Valid', isValid: true, reason: 'Passed all checks' };
   }
 
@@ -742,5 +739,26 @@ export class OmnixUploadService {
     }
 
     return lookupMap;
+  }
+
+  determineChannel(row: any, col: any, H: any): string {
+    const channelName = col(H.channelName).text.toLowerCase();
+    const contact = col(H.contact).text;
+
+    if (/whatsapp/i.test(channelName)) {
+      return 'Whatsapp';
+    }
+    if (/ig message|fb message/i.test(channelName)) {
+      return 'Socmed';
+    }
+    if (/manual/i.test(channelName)) {
+      if (/phone/i.test(contact)) {
+        return 'Whatsapp';
+      }
+      if (/instagram_id/i.test(contact) || /facebook_id/i.test(contact)) {
+        return 'Socmed';
+      }
+    }
+    return 'OTHER';
   }
 }
