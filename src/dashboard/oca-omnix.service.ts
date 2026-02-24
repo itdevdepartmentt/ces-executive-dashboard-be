@@ -55,20 +55,20 @@ export class OcaOmnixService {
             -- totalTickets: filtered by channel
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
             )::int AS "totalTickets",
 
             -- totalOpen: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalOpen",
 
             -- totalClosed: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 AND ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalClosed",
 
@@ -76,17 +76,17 @@ export class OcaOmnixService {
             CASE
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
                         2
@@ -112,17 +112,17 @@ export class OcaOmnixService {
             CASE 
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'ig message', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
                         2
