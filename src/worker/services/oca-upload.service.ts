@@ -307,29 +307,29 @@ export class OcaUploadService {
   }
 
   determineChannel(row: any, agentMap: Map<string, string>): string {
-    const department = row['Department'] || '';
+    const department = row['department'] || '';
 
     if (/leads/i.test(department)) {
-      return 'Leads';
+      return 'leads';
     } else if (/survey/i.test(department)) {
-      return 'Survey';
+      return 'survey';
     } else if (/GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)) {
-      return 'Email';
+      return 'email';
     } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
-      return 'Livechat';
+      return 'livechat';
     }
 
     if (/#CCCorp/i.test(row['Ticket Subject'] || '')) {
-      return 'Call Center';
+      return 'call center';
     }
 
     const agentName = row['Assignee'] || '';
     const agentGroup = agentMap.get(agentName.trim().toLowerCase());
 
     if (/cc/i.test(agentGroup || '')) {
-      return 'Call Center';
+      return 'call center';
     } else if (/live chat/i.test(agentGroup || '')) {
-      return 'Livechat';
+      return 'livechat';
     }
 
     // Default to original value if no rules matched
