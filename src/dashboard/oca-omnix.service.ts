@@ -55,20 +55,20 @@ export class OcaOmnixService {
             -- totalTickets: filtered by channel
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
             )::int AS "totalTickets",
 
             -- totalOpen: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                 AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalOpen",
 
             -- totalClosed: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                 AND ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalClosed",
 
@@ -76,17 +76,17 @@ export class OcaOmnixService {
             CASE
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                         )::numeric
                         * 100,
                         2
@@ -112,17 +112,17 @@ export class OcaOmnixService {
             CASE 
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
                         )::numeric
                         * 100,
                         2
@@ -368,7 +368,7 @@ ORDER BY 1 ASC;
     filter: DashboardFilterDto,
     channel: string,
     metricType: 'nama_perusahaan' | 'detail_category',
-    source: 'OCA' | 'OMNIX' | "CALL",
+    source: 'OCA' | 'OMNIX' | 'CALL',
   ) {
     let tableName = '';
     let metricColumn = ''; // The target column (Company or Category)

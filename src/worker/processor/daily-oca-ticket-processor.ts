@@ -32,8 +32,8 @@ export class DailyOcaTicketProcessor extends WorkerHost {
     const resultsToUpsert = [];
 
     const kipMap = await this.createLookupMap(
-      this.prisma.kIP,
-      'subCategory',
+      this.prisma.lookupKIP,
+      'compositeKey',
       'product',
     );
 
@@ -41,6 +41,18 @@ export class DailyOcaTicketProcessor extends WorkerHost {
       this.prisma.accountMapping,
       'corporateName',
       'kategoriAccount',
+    );
+
+    const fcrMap = await this.createLookupMap(
+      this.prisma.lookupKIP,
+      'compositeKey',
+      'isFcr',
+    );
+
+    const agentMap = await this.createLookupMap(
+      this.prisma.lookupAgent,
+      'namaAgent',
+      'group',
     );
 
     this.logger.log(`Processing batch of ${tickets.length} tickets...`); // 1. Fetch Activity History
@@ -71,12 +83,33 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         // C. Calculations (Using the Maps we fetched once)
         const classification = this.classifyTicket(mappedData);
 
-        const rawSubCategory = mappedData.subCategory;
-        const normalizedSubCategory =
-          typeof rawSubCategory === 'string'
-            ? rawSubCategory.trim().toLowerCase()
-            : '';
-        const derivedProduct = kipMap.get(normalizedSubCategory || '');
+        // const rawSubCategory = mappedData.subCategory;
+        // const normalizedSubCategory =
+        //   typeof rawSubCategory === 'string'
+        //     ? rawSubCategory.trim().toLowerCase()
+        //     : '';
+        // const derivedProduct = kipMap.get(normalizedSubCategory || '');
+
+        const compositeFcrKey =
+          `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${mappedData.iot?.trim() || ''}`
+            .trim()
+            .toLowerCase();
+        let fcrStatus = fcrMap.get(compositeFcrKey) || false;
+
+        let derivedProduct = kipMap.get(compositeFcrKey || '-');
+
+        if (
+          !derivedProduct &&
+          /iot/i.test(mappedData.subCategory || '') &&
+          /ENGINEER/i.test(mappedData.department || '')
+        ) {
+          derivedProduct = 'SOLUTION';
+        } else {
+          derivedProduct = 'CONNECTIVITY';
+          fcrStatus = true;
+        }
+
+        const channel = this.determineChannel(mappedData, agentMap);
 
         const rawNamaPerusahaan = mappedData.namaPerusahaan;
         const normalizedNamaPerusahaan =
@@ -100,11 +133,11 @@ export class DailyOcaTicketProcessor extends WorkerHost {
             })
           : false;
 
-        const fcrStatus = calculateFcrStatus({
-          'ID Remedy_NO': mappedData.idRemedyNo,
-          'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
-          'Jumlah MSISDN': mappedData.jumlahMsisdn,
-        });
+        // const fcrStatus = calculateFcrStatus({
+        //   'ID Remedy_NO': mappedData.idRemedyNo,
+        //   'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
+        //   'Jumlah MSISDN': mappedData.jumlahMsisdn,
+        // });
 
         const typeEskalasi = determineEskalasi({
           'ID Remedy_NO': mappedData.idRemedyNo,
@@ -114,6 +147,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         // D. Return Final Object
         return {
           ...mappedData,
+          channel: channel,
           validationStatus: classification.status,
           statusTiket: classification.isValid,
           product: derivedProduct,
@@ -143,7 +177,6 @@ export class DailyOcaTicketProcessor extends WorkerHost {
       await this.ocaUpsertService.saveBatch(validRows);
       this.logger.log(`Successfully saved ${validRows.length} tickets.`);
     }
-
   }
 
   /**
@@ -201,7 +234,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
     return {
       ticketNumber: baseData.ticket_number,
       ticketSubject: baseData.ticket_subject,
-      channel: baseData.channel,
+      channelOca: baseData.channel,
       category: customFields['category'],
       reporter: customFields['Reporter'],
       assignee: baseData.assigned_data?.name ?? '-',
@@ -264,7 +297,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
     // 1. Iterate through defined rules
     for (const rule of TICKET_RULES) {
       // Get value safely (handle casing if needed)
-      const cellValue = row[rule.prop];
+      const cellValue = row[rule.column];
 
       // If rule matches, return that status immediately (Fail-Fast)
       if (cellValue && rule.check(cellValue)) {
@@ -274,6 +307,18 @@ export class DailyOcaTicketProcessor extends WorkerHost {
           reason: `Matched ${rule.status} rule on ${rule.column}`,
         };
       }
+    }
+
+    if (
+      /Livechat/i.test(row['Channel']) &&
+      /Eskalasi BES/i.test(row['Description'])
+    ) {
+      console.log('Matched special case: Live Chat + Eskalasi BES');
+      return {
+        status: 'Double',
+        isValid: false,
+        reason: 'Eskalasi BES in Live Chat',
+      };
     }
 
     // 2. Special Case: The "Valid" Description override from your image
@@ -320,5 +365,37 @@ export class DailyOcaTicketProcessor extends WorkerHost {
     }
 
     return lookupMap;
+  }
+
+  determineChannel(row: any, agentMap: Map<string, string>): string {
+    const department = row.department || '';
+
+    if (/leads/i.test(department)) {
+      return 'leads';
+    } else if (/survey/i.test(department)) {
+      return 'survey';
+    } else if (
+      /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)
+    ) {
+      return 'email';
+    } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
+      return 'livechat';
+    }
+
+    if (/#CCCorp/i.test(row.ticketSubject || '')) {
+      return 'call center';
+    }
+
+    const agentName = row.assignee || '';
+    const agentGroup = agentMap.get(agentName.trim().toLowerCase());
+
+    if (/cc/i.test(agentGroup || '')) {
+      return 'call center';
+    } else if (/live chat/i.test(agentGroup || '')) {
+      return 'livechat';
+    }
+
+    // Default to original value if no rules matched
+    return row.channelOca;
   }
 }
