@@ -86,35 +86,53 @@ export function determineChannel(
   const department = row.department || '';
   const channel = row.channelOca || '';
 
-  if (
-    /email|form/i.test(channel) &&
-    /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
-  ) {
-    return 'email';
-  }
+  const agentName = row.assignee || '';
+  const agentGroup = agentMap.get(agentName.trim().toLowerCase());
 
-  if (/leads/i.test(department)) {
-    return 'leads';
-  } else if (/survey/i.test(department)) {
-    return 'survey';
-  } else if (
-    /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)
-  ) {
-    return 'email';
-  } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
-    return 'livechat';
+  if (/cc/i.test(agentGroup || '')) {
+    return 'call center';
   }
 
   if (/#CCCorp/i.test(row.ticketSubject || '')) {
     return 'call center';
   }
 
-  const agentName = row.assignee || '';
-  const agentGroup = agentMap.get(agentName.trim().toLowerCase());
+  if (/leads/i.test(department)) {
+    return 'leads';
+  } else if (/survey/i.test(department)) {
+    return 'survey';
+  } 
 
-  if (/cc/i.test(agentGroup || '')) {
-    return 'call center';
-  } else if (/live chat/i.test(agentGroup || '')) {
+  if (
+    /email|form/i.test(channel) &&
+    /^Live Chat|TL QC/.test(department)
+  ) {
+    return 'email';
+  }
+
+  if (/email|form/i.test(channel) &&
+      /live chat/i.test(agentGroup || '')) {
+    return 'livechat';
+  }
+
+  if (/Live Chat/i.test(department)) {
+    return 'livechat';
+  }
+
+  if (/livechat/i.test(channel)) {
+    return 'livechat';
+  }
+
+  if (
+    /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC|ENGINEER/i.test(department)
+  ) {
+    return 'email';
+  } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
+    return 'livechat';
+  }
+
+
+  if (/live chat/i.test(agentGroup || '')) {
     return 'livechat';
   }
 

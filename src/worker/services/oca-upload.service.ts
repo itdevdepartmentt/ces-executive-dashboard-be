@@ -106,15 +106,14 @@ export class OcaUploadService {
 
       let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
-      if (
-        !derivedProduct &&
-        /iot/i.test(row['Sub Category']) &&
-        /ENGINEER/i.test(row['Department'])
-      ) {
-        derivedProduct = 'SOLUTION';
-      } else {
-        derivedProduct = 'CONNECTIVITY';
-        fcrStatus = true;
+      if (!derivedProduct) {
+        if(/iot/i.test(row['Sub Category']) &&
+        /ENGINEER|TECHNICAL TEAM/i.test(row['Department'])) {
+          derivedProduct = 'SOLUTION';
+        } else {
+          derivedProduct = 'CONNECTIVITY';
+          fcrStatus = true;
+        }
       }
 
       const channel = determineChannel(
