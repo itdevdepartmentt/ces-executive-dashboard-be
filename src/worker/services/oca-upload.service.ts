@@ -6,14 +6,14 @@ import { Job } from 'bullmq';
 import csv from 'csv-parser';
 import * as fs from 'fs';
 import { ExcelUtils } from '../excel-utils.helper';
-import {
-  calculateFcrStatus,
-  calculateSlaStatus,
-  determineEskalasi,
-  TICKET_RULES,
-} from '../utils/rules.constant';
+import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
 import { OcaUpsertService } from '../repository/oca-upsert.service';
-import { channel } from 'process';
+import {
+  classifyTicket,
+  createLookupMap,
+  determineChannel,
+  VIP_REGEX,
+} from '../utils/oca-ticket.utils';
 
 @Injectable()
 export class OcaUploadService {
@@ -23,29 +23,27 @@ export class OcaUploadService {
     private readonly prisma: PrismaService,
     private readonly ocaUpsertService: OcaUpsertService,
   ) {}
-  // regex to identify VIP keywords
-  private readonly vipRegex = /vvip|vip|direk|director|komisaris/i;
 
   async process(job: Job) {
-    const kipMap = await this.createLookupMap(
+    const kipMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'product',
     );
 
-    const accountMap = await this.createLookupMap(
+    const accountMap = await createLookupMap(
       this.prisma.accountMapping,
       'corporateName',
       'kategoriAccount',
     );
 
-    const fcrMap = await this.createLookupMap(
+    const fcrMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'isFcr',
     );
 
-    const agentMap = await this.createLookupMap(
+    const agentMap = await createLookupMap(
       this.prisma.lookupAgent,
       'namaAgent',
       'group',
@@ -76,14 +74,17 @@ export class OcaUploadService {
 
     this.logger.log(`Starting Oca CSV Batch Upload Service`);
     for await (const row of stream) {
-      const classification = this.classifyTicket(row);
-
-      // const rawSubCategory = row['Sub Category'];
-      // const normalizedSubCategory =
-      //   typeof rawSubCategory === 'string'
-      //     ? rawSubCategory.trim().toLowerCase()
-      //     : '';
-      // const derivedProduct = kipMap.get(normalizedSubCategory || '');
+      const normalizedRow = {
+        customerEmail: row['Customer Email'],
+        ticketSubject: row['Ticket Subject'],
+        department: row['Department'],
+        subCategory: row['Sub Category'],
+        assignee: row['Assignee'],
+        description: row['Description'],
+        detailCategory: row['Detail Category'],
+        channelOca: row['Channel'],
+      };
+      const classification = classifyTicket(normalizedRow);
 
       const rawNamaPerusahaan = row['Nama Perusahaan'];
       const normalizedNamaPerusahaan =
@@ -95,7 +96,7 @@ export class OcaUploadService {
       );
 
       const ticketSubject = row['Ticket Subject'] || '';
-      const isVip = this.vipRegex.test(ticketSubject);
+      const isVip = VIP_REGEX.test(ticketSubject);
 
       const compositeFcrKey =
         `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${row['IOT'].trim()}`
@@ -116,21 +117,22 @@ export class OcaUploadService {
         fcrStatus = true;
       }
 
-      const channel = this.determineChannel(row, agentMap);
+      const channel = determineChannel(
+        {
+          department: row['Department'],
+          channelOca: row['Channel'],
+          ticketSubject: row['Ticket Subject'],
+          assignee: row['Assignee'],
+        },
+        agentMap,
+      );
 
-      // --- 2. RUN SLA CALCULATION ---
-      // Now we pass the 'derivedProduct' as 'Kolom BF'
+      // --- RUN SLA CALCULATION ---
       const slaStatus = calculateSlaStatus({
         product: derivedProduct,
         ticketCreated: row['Ticket Created'],
         resolveTime: row['Resolve Time'],
       });
-
-      // const fcrStatus = calculateFcrStatus({
-      //   'ID Remedy_NO': row['ID Remedy_NO'],
-      //   'Eskalasi/ID Remedy_IT/AO/EMS': row['Eskalasi/ID Remedy_IT/AO/EMS'],
-      //   'Jumlah MSISDN': row['Jumlah MSISDN'],
-      // });
 
       const typeEskalasi = determineEskalasi({
         'ID Remedy_NO': row['ID Remedy_NO'],
@@ -230,80 +232,6 @@ export class OcaUploadService {
     return { status: 'CSV Ticket Report Completed' };
   }
 
-  private classifyTicket(row: any) {
-    // 1. Iterate through defined rules
-    for (const rule of TICKET_RULES) {
-      // Get value safely (handle casing if needed)
-      const cellValue = row[rule.column];
-
-      // If rule matches, return that status immediately (Fail-Fast)
-      if (cellValue && rule.check(cellValue)) {
-        return {
-          status: rule.status,
-          isValid: false, // It hit a "Double/EMS/RPA" rule
-          reason: `Matched ${rule.status} rule on ${rule.column}`,
-        };
-      }
-    }
-
-    if (
-      /Livechat/i.test(row['Channel']) &&
-      /Eskalasi BES/i.test(row['Description'])
-    ) {
-      console.log('Matched special case: Live Chat + Eskalasi BES');
-      return {
-        status: 'Double',
-        isValid: false,
-        reason: 'Eskalasi BES in Live Chat',
-      };
-    }
-
-    // 2. Special Case: The "Valid" Description override from your image
-    // If the image implies "completed by hia" overrides others, put this BEFORE the loop.
-    // If it implies "it's valid if it contains this", we handle it here as a fallback.
-    if (row['description'] && /completed by hia/i.test(row['description'])) {
-      return { status: 'Valid', isValid: true, reason: 'Completed by HIA' };
-    }
-
-    // 3. Default Fallback (Row 11 in your image)
-    return { status: 'Valid', isValid: true, reason: 'Passed all checks' };
-  }
-
-  /**
-   * Generic helper to fetch reference data and create a normalized Map
-   * @param modelDelegate The prisma model (e.g. this.prisma.kIP)
-   * @param keyField The database column to be used as the Map Key (normalized)
-   * @param valueField The database column to be used as the Map Value
-   */
-  private async createLookupMap(
-    modelDelegate: any,
-    keyField: string,
-    valueField: string,
-  ): Promise<Map<string, string>> {
-    // 1. Dynamic Select: Fetch only the columns we need
-    const data = await modelDelegate.findMany({
-      select: {
-        [keyField]: true,
-        [valueField]: true,
-      },
-    });
-
-    // 2. Build Map with normalization
-    const lookupMap = new Map<string, string>();
-
-    for (const row of data) {
-      const rawKey = row[keyField];
-      const value = row[valueField];
-
-      // Ensure key exists and is a string before processing
-      if (rawKey && typeof rawKey === 'string') {
-        lookupMap.set(rawKey.trim().toLowerCase(), value || '');
-      }
-    }
-
-    return lookupMap;
-  }
-
   detectDelimiter(filePath) {
     const fd = fs.openSync(filePath, 'r');
     const buffer = Buffer.alloc(1024); // enough to read header line
@@ -316,45 +244,5 @@ export class OcaUploadService {
     const semicolonCount = (firstLine.match(/;/g) || []).length;
 
     return semicolonCount > commaCount ? ';' : ',';
-  }
-
-  determineChannel(row: any, agentMap: Map<string, string>): string {
-    const department = row['department'] || '';
-    const channel = row['Channel'] || '';
-
-    if (
-      /email|form/i.test(channel) &&
-      /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
-    ) {
-      return 'email';
-    }
-
-    if (/leads/i.test(department)) {
-      return 'leads';
-    } else if (/survey/i.test(department)) {
-      return 'survey';
-    } else if (
-      /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)
-    ) {
-      return 'email';
-    } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
-      return 'livechat';
-    }
-
-    if (/#CCCorp/i.test(row['Ticket Subject'] || '')) {
-      return 'call center';
-    }
-
-    const agentName = row['Assignee'] || '';
-    const agentGroup = agentMap.get(agentName.trim().toLowerCase());
-
-    if (/cc/i.test(agentGroup || '')) {
-      return 'call center';
-    } else if (/live chat/i.test(agentGroup || '')) {
-      return 'livechat';
-    }
-
-    // Default to original value if no rules matched
-    return row['Channel'];
   }
 }

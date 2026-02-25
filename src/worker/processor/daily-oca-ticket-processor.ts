@@ -3,12 +3,13 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import axios from 'axios';
 import { PrismaService } from 'prisma/prisma.service';
+import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
 import {
-  calculateFcrStatus,
-  calculateSlaStatus,
-  determineEskalasi,
-  TICKET_RULES,
-} from '../utils/rules.constant';
+  classifyTicket,
+  createLookupMap,
+  determineChannel,
+  VIP_REGEX,
+} from '../utils/oca-ticket.utils';
 import { OcaUpsertService } from '../repository/oca-upsert.service';
 import { Logger } from '@nestjs/common';
 import { ExcelUtils } from '../excel-utils.helper';
@@ -23,33 +24,31 @@ export class DailyOcaTicketProcessor extends WorkerHost {
   ) {
     super();
   }
-  // regex to identify VIP keywords
-  private readonly vipRegex = /vvip|vip|direk|director|komisaris/i;
 
   async process(job: Job<any, any, string>): Promise<any> {
     const { ticketId, baseData } = job.data;
     const { tickets } = job.data; // <--- Receive Array
     const resultsToUpsert = [];
 
-    const kipMap = await this.createLookupMap(
+    const kipMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'product',
     );
 
-    const accountMap = await this.createLookupMap(
+    const accountMap = await createLookupMap(
       this.prisma.accountMapping,
       'corporateName',
       'kategoriAccount',
     );
 
-    const fcrMap = await this.createLookupMap(
+    const fcrMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'isFcr',
     );
 
-    const agentMap = await this.createLookupMap(
+    const agentMap = await createLookupMap(
       this.prisma.lookupAgent,
       'namaAgent',
       'group',
@@ -81,14 +80,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         let mappedData = this.mapToDomainModel(baseTicket, customFields);
 
         // C. Calculations (Using the Maps we fetched once)
-        const classification = this.classifyTicket(mappedData);
-
-        // const rawSubCategory = mappedData.subCategory;
-        // const normalizedSubCategory =
-        //   typeof rawSubCategory === 'string'
-        //     ? rawSubCategory.trim().toLowerCase()
-        //     : '';
-        // const derivedProduct = kipMap.get(normalizedSubCategory || '');
+        const classification = classifyTicket(mappedData);
 
         const compositeFcrKey =
           `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${mappedData.iot?.trim() || ''}`
@@ -109,7 +101,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
           fcrStatus = true;
         }
 
-        const channel = this.determineChannel(mappedData, agentMap);
+        const channel = determineChannel(mappedData, agentMap);
 
         const rawNamaPerusahaan = mappedData.namaPerusahaan;
         const normalizedNamaPerusahaan =
@@ -121,9 +113,9 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         );
 
         const ticketSubject = mappedData.ticketSubject || '';
-        const isVip = this.vipRegex.test(ticketSubject);
+        const isVip = VIP_REGEX.test(ticketSubject);
 
-        // --- 2. RUN SLA CALCULATION ---
+        // --- RUN SLA CALCULATION ---
         // Now we pass the 'derivedProduct' as 'Kolom BF'
         const slaStatus = classification.isValid
           ? calculateSlaStatus({
@@ -132,12 +124,6 @@ export class DailyOcaTicketProcessor extends WorkerHost {
               resolveTime: mappedData.resolveTime,
             })
           : false;
-
-        // const fcrStatus = calculateFcrStatus({
-        //   'ID Remedy_NO': mappedData.idRemedyNo,
-        //   'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
-        //   'Jumlah MSISDN': mappedData.jumlahMsisdn,
-        // });
 
         const typeEskalasi = determineEskalasi({
           'ID Remedy_NO': mappedData.idRemedyNo,
@@ -290,121 +276,5 @@ export class DailyOcaTicketProcessor extends WorkerHost {
       detailCategory: customFields['Detail Category'],
       iot: customFields['IOT'],
     };
-  }
-
-  // ... Include your calculateSlaStatus, determineEskalasi, etc methods here
-  private classifyTicket(row: any) {
-    // 1. Iterate through defined rules
-    for (const rule of TICKET_RULES) {
-      // Get value safely (handle casing if needed)
-      const cellValue = row[rule.column];
-
-      // If rule matches, return that status immediately (Fail-Fast)
-      if (cellValue && rule.check(cellValue)) {
-        return {
-          status: rule.status,
-          isValid: false, // It hit a "Double/EMS/RPA" rule
-          reason: `Matched ${rule.status} rule on ${rule.column}`,
-        };
-      }
-    }
-
-    if (
-      /Livechat/i.test(row['Channel']) &&
-      /Eskalasi BES/i.test(row['Description'])
-    ) {
-      console.log('Matched special case: Live Chat + Eskalasi BES');
-      return {
-        status: 'Double',
-        isValid: false,
-        reason: 'Eskalasi BES in Live Chat',
-      };
-    }
-
-    // 2. Special Case: The "Valid" Description override from your image
-    // If the image implies "completed by hia" overrides others, put this BEFORE the loop.
-    // If it implies "it's valid if it contains this", we handle it here as a fallback.
-    if (row['description'] && /completed by hia/i.test(row['description'])) {
-      return { status: 'Valid', isValid: true, reason: 'Completed by HIA' };
-    }
-
-    // 3. Default Fallback (Row 11 in your image)
-    return { status: 'Valid', isValid: true, reason: 'Passed all checks' };
-  }
-
-  /**
-   * Generic helper to fetch reference data and create a normalized Map
-   * @param modelDelegate The prisma model (e.g. this.prisma.kIP)
-   * @param keyField The database column to be used as the Map Key (normalized)
-   * @param valueField The database column to be used as the Map Value
-   */
-  private async createLookupMap(
-    modelDelegate: any,
-    keyField: string,
-    valueField: string,
-  ): Promise<Map<string, string>> {
-    // 1. Dynamic Select: Fetch only the columns we need
-    const data = await modelDelegate.findMany({
-      select: {
-        [keyField]: true,
-        [valueField]: true,
-      },
-    });
-
-    // 2. Build Map with normalization
-    const lookupMap = new Map<string, string>();
-
-    for (const row of data) {
-      const rawKey = row[keyField];
-      const value = row[valueField];
-
-      // Ensure key exists and is a string before processing
-      if (rawKey && typeof rawKey === 'string') {
-        lookupMap.set(rawKey.trim().toLowerCase(), value || '');
-      }
-    }
-
-    return lookupMap;
-  }
-
-  determineChannel(row: any, agentMap: Map<string, string>): string {
-    const department = row.department || '';
-    const channel = row.channelOca || '';
-
-    if (
-      /email|form/i.test(channel) &&
-      /LIVE CHAT|Live Chat|TL QC|Bes Live Chat/i.test(department)
-    ) {
-      this.logger.log(`Matched email override for department ${department} and channel ${channel}`);
-      return 'email';
-    }
-
-    if (/leads/i.test(department)) {
-      return 'leads';
-    } else if (/survey/i.test(department)) {
-      return 'survey';
-    } else if (
-      /GENERAL SERVICE FIX|TECHNICAL TEAM|BUFFER 2024|QC/i.test(department)
-    ) {
-      return 'email';
-    } else if (/Live chat|BES LIVE CHAT|Messenger/i.test(department)) {
-      return 'livechat';
-    }
-
-    if (/#CCCorp/i.test(row.ticketSubject || '')) {
-      return 'call center';
-    }
-
-    const agentName = row.assignee || '';
-    const agentGroup = agentMap.get(agentName.trim().toLowerCase());
-
-    if (/cc/i.test(agentGroup || '')) {
-      return 'call center';
-    } else if (/live chat/i.test(agentGroup || '')) {
-      return 'livechat';
-    }
-
-    // Default to original value if no rules matched
-    return row.channelOca;
   }
 }
