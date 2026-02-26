@@ -90,11 +90,11 @@ export function determineChannel(
   const agentGroup = agentMap.get(agentName.trim().toLowerCase());
 
   if (/cc/i.test(agentGroup || '')) {
-    return 'call center';
+    return 'callcenter';
   }
 
   if (/#CCCorp/i.test(row.ticketSubject || '')) {
-    return 'call center';
+    return 'callcenter';
   }
 
   if (/leads/i.test(department)) {

@@ -145,7 +145,7 @@ export function calculateSlaStatus(row: any): boolean {
 
   // 2. Handle "Blank" or "-" logic
   if (!resolutionRaw || resolutionRaw === '-') {
-    return true; // Implies IN SLA
+    return false; // Implies IN SLA
   }
 
   // --- THE FIX: Smart Parsing Helper ---

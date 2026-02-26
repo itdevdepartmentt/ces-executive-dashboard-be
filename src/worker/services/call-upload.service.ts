@@ -89,7 +89,7 @@ export class CallUploadService {
           statusTiket: true,
           product: derivedProduct?.toUpperCase() || '-',
           sla: true,
-          fcr: false,
+          fcr: true,
           eskalasi: '-',
           isPareto: derivedAccountCategory === 'P1' ? true : false,
           isVip: false,
