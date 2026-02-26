@@ -55,20 +55,20 @@ export class OcaOmnixService {
             -- totalTickets: filtered by channel
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
             )::int AS "totalTickets",
 
             -- totalOpen: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalOpen",
 
             -- totalClosed: filtered by channel + status
             COUNT(*) FILTER (
                 WHERE "statusTiket"
-                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 AND ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalClosed",
 
@@ -76,17 +76,17 @@ export class OcaOmnixService {
             CASE
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
                         2
@@ -112,17 +112,17 @@ export class OcaOmnixService {
             CASE 
                 WHEN COUNT(*) FILTER (
                     WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
                             WHERE "inSla"  AND "statusTiket"
                             AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(*) FILTER (
                             WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'call center'])
+                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
                         2
@@ -276,7 +276,7 @@ ORDER BY 1 ASC;
         "update_stamp" as "ticket_created",
         "isFcr",
         "isPareto",
-        'CALL' as "source_origin"
+        'OCA' as "source_origin"
       FROM "RawCall"
       WHERE "update_stamp" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
     )
@@ -328,14 +328,25 @@ ORDER BY 1 ASC;
         COUNT(*) FILTER (WHERE "product" = 'CONNECTIVITY' AND ("resolve_time" - "ticket_created") > interval '3 hours')::int as "connOver3h",
         COUNT(*) FILTER (WHERE "product" = 'SOLUTION' AND ("resolve_time" - "ticket_created") > interval '6 hours')::int as "solOver6h",
 
-        -- FCR Stats
-        COUNT(*) FILTER (WHERE NOT "isFcr")::int as "nonFcrCount",
-        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE "isFcr")::decimal / COUNT(*)) * 100, 2) ELSE 0 END as "pctFcr",
-        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE NOT "isFcr")::decimal / COUNT(*)) * 100, 2) ELSE 0 END as "pctNonFcr",
+        -- SLA Percentage WITHIN FCR and Pareto
+        CASE WHEN COUNT(*) FILTER (WHERE "isFcr" and "statusTiket") > 0 THEN 
+            ROUND((COUNT(*) FILTER (WHERE "isFcr" AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isFcr" and "statusTiket")) * 100, 2) 
+            ELSE 0 END as "pctFcr",
 
-        -- Pareto Stats
-        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE "isPareto" = true)::decimal / COUNT(*)) * 100, 2) ELSE 0 END as "pctPareto",
-        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE "isPareto" = false)::decimal / COUNT(*)) * 100, 2) ELSE 0 END as "pctNotPareto"
+        -- SLA Percentage WITHIN Non-FCR
+        CASE WHEN COUNT(*) FILTER (WHERE NOT "isFcr" and "statusTiket") > 0 THEN 
+            ROUND((COUNT(*) FILTER (WHERE NOT "isFcr" AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE NOT "isFcr" and "statusTiket")) * 100, 2) 
+            ELSE 0 END as "pctNonFcr",
+
+        -- SLA Percentage WITHIN Pareto
+        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = true and "statusTiket") > 0 THEN 
+            ROUND((COUNT(*) FILTER (WHERE "isPareto" = true AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isPareto" = true and "statusTiket")) * 100, 2) 
+            ELSE 0 END as "pctPareto",
+
+        -- SLA Percentage WITHIN Non-Pareto
+        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = false and "statusTiket") > 0 THEN 
+            ROUND((COUNT(*) FILTER (WHERE "isPareto" = false AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isPareto" = false and "statusTiket")) * 100, 2) 
+            ELSE 0 END as "pctNotPareto"
 
     FROM "UnifiedData"
     GROUP BY LOWER("channel"), "source_origin"
@@ -789,9 +800,13 @@ ORDER BY 1 ASC;
                 "statusTiket", 
                 "inSla", 
                 "detail_category",               -- Used for Top KIPs (existing)
-                "sub_category" as "general_category" -- NEW: Used for Top 5 Category
+                "sub_category" as "general_category", -- NEW: Used for Top 5 Category
+                "channel"
             FROM "RawOca"
-            WHERE "ticket_created" >= $1::timestamptz AND "ticket_created" < $2::timestamptz AND "statusTiket"
+            WHERE "ticket_created" >= $1::timestamptz AND "ticket_created" < $2::timestamptz 
+            AND "statusTiket"
+            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+
             
             UNION ALL
             
@@ -804,9 +819,13 @@ ORDER BY 1 ASC;
                 "statusTiket", 
                 "inSla", 
                 "subCategory" as "detail_category", -- Used for Top KIPs (existing)
-                "category" as "general_category"    -- NEW: Used for Top 5 Category
+                "category" as "general_category",    -- NEW: Used for Top 5 Category
+                "channel_name" as "channel"
             FROM "RawOmnix"
-            WHERE "date_start_interaction" >= $1::timestamp AND "date_start_interaction" < $2::timestamp AND "statusTiket"
+            WHERE "date_start_interaction" >= $1::timestamp AND "date_start_interaction" < $2::timestamp
+            AND "statusTiket"
+            AND "channel_name" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+
         )
     `;
 
@@ -843,7 +862,7 @@ ORDER BY 1 ASC;
             "product",
             COUNT(*)::int as "total",
             COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "open",
-            COUNT(*) FILTER (WHERE ("resolve_time" - "ticket_created") > interval '3 hours')::int as "over3h",
+            COUNT(*) FILTER (WHERE NOT "inSla")::int as "over3h",
             CASE WHEN COUNT(*) FILTER (WHERE "statusTiket" = true) > 0 
                  THEN ROUND(
                     (COUNT(*) FILTER (WHERE "inSla" AND "statusTiket")::decimal / 
@@ -956,7 +975,7 @@ ORDER BY 1 ASC;
         SELECT 
           COUNT(*) FILTER (WHERE  NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "totalOpen",
           -- Convert UTC to WIB before calculating if it's over 3H
-          COUNT(*) FILTER (WHERE ("resolve_time" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') - 
+          COUNT(*) FILTER (WHERE (now() AT TIME ZONE 'Asia/Jakarta') - 
                                  ("ticket_created" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') > interval '3 hours'
                                  AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "over3H"
         FROM "RawOca"
@@ -973,6 +992,8 @@ ORDER BY 1 ASC;
           ticketNumber: true,
           projectId: true,
           resolveTime: true,
+          lastStatus: true,
+          description: true,
         },
         skip: Number(skip),
         take: Number(limit),
@@ -994,14 +1015,15 @@ ORDER BY 1 ASC;
 
       // 2. Format Duration
       let durationStr = '00:00:00';
-      if (item.resolveTime && item.ticketCreated) {
-        const diffMs =
-          item.resolveTime.getTime() - item.ticketCreated.getTime();
-        const hrs = Math.floor(diffMs / 3600000);
-        const mins = Math.floor((diffMs % 3600000) / 60000);
-        const secs = Math.floor((diffMs % 60000) / 1000);
-        durationStr = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-      }
+      const now = new Date();
+      const diffMs =
+        now.getTime() - (item?.ticketCreated?.getTime() || 0);
+      const hrs = Math.floor(diffMs / 3600000);
+      const mins = Math.floor((diffMs % 3600000) / 60000);
+      const secs = Math.floor((diffMs % 60000) / 1000);
+      durationStr = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+      const {caseId, unitId} = this.extractCaseIdAndUnitId(item.description || '');
 
       return {
         // 3. Display date in WIB format: DD/MM
@@ -1013,10 +1035,10 @@ ORDER BY 1 ASC;
             })
           : '',
         idTicket: item.ticketNumber,
-        idCase: item.projectId,
+        idCase: caseId,
         duration: durationStr,
-        actName: item.projectId,
-        unitId: item.projectId,
+        actName: item.lastStatus,
+        unitId: unitId,
       };
     });
 
@@ -1040,6 +1062,12 @@ ORDER BY 1 ASC;
   async getBillcoEscalation(query: PaginationDto) {
     const { page = 1, limit = 10, search, startDate, endDate } = query;
     const skip = (page - 1) * limit;
+
+    const accountMap = await this.createLookupMap(
+      this.prisma.accountMapping,
+      'corporateName',
+      'group',
+    );
 
     const whereClause: Prisma.RawOcaWhereInput = {
       eskalasi: 'Billco',
@@ -1067,7 +1095,7 @@ ORDER BY 1 ASC;
         SELECT 
           COUNT(*) FILTER (WHERE  NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "totalOpen",
           -- Convert UTC to WIB before calculating if it's over 3H
-          COUNT(*) FILTER (WHERE ("resolve_time" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') - 
+          COUNT(*) FILTER (WHERE (now() AT TIME ZONE 'Asia/Jakarta') - 
                                  ("ticket_created" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') > interval '3 hours'
                                  AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "over3H"
         FROM "RawOca"
@@ -1111,7 +1139,7 @@ ORDER BY 1 ASC;
           : '',
         idTicket: item.ticketNumber,
         kip: item.detailCategory,
-        lob: item.namaPerusahaan,
+        lob: accountMap.get(item?.namaPerusahaan?.trim().toLowerCase() || '') || 'Unknown',
       };
     });
 
@@ -1130,7 +1158,7 @@ ORDER BY 1 ASC;
   }
 
   // ---------------------------------------------------------
-  // 8. Billco ESCALATION (Filtered by eskalasi = 'Billco' with WIB Conversion)
+  // 8. IT ESCALATION (Filtered by eskalasi = 'Billco' with WIB Conversion)
   // ---------------------------------------------------------
   async getItEscalation(query: PaginationDto) {
     const { page = 1, limit = 10, search, startDate, endDate } = query;
@@ -1162,9 +1190,11 @@ ORDER BY 1 ASC;
         SELECT 
           COUNT(*) FILTER (WHERE  NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "totalOpen",
           -- Convert UTC to WIB before calculating if it's over 3H
-          COUNT(*) FILTER (WHERE ("resolve_time" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') - 
-                                 ("ticket_created" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') > interval '3 hours'
-                                 AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%'))::int as "over3H"
+        COUNT(*) FILTER (WHERE 
+  (now() AT TIME ZONE 'Asia/Jakarta') - 
+  ("ticket_created" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') > interval '3 hours'
+  AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
+)::int as "over3H"
         FROM "RawOca"
         WHERE "eskalasi" = 'IT'
           AND "ticket_created" >= ${startDate}::timestamptz AND "ticket_created" < ${endDate}::timestamptz
@@ -1177,7 +1207,7 @@ ORDER BY 1 ASC;
         select: {
           ticketCreated: true, // Prisma returns this as a UTC Date object
           ticketNumber: true,
-          idRemedyNo: true,
+          eskalasiIdRemedyItAoEms: true,
           resolveTime: true,
         },
         skip: Number(skip),
@@ -1200,14 +1230,15 @@ ORDER BY 1 ASC;
 
       // 2. Format Duration
       let durationStr = '00:00:00';
-      if (item.resolveTime && item.ticketCreated) {
-        const diffMs =
-          item.resolveTime.getTime() - item.ticketCreated.getTime();
-        const hrs = Math.floor(diffMs / 3600000);
-        const mins = Math.floor((diffMs % 3600000) / 60000);
-        const secs = Math.floor((diffMs % 60000) / 1000);
-        durationStr = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-      }
+      const now = new Date();
+      const diffMs =
+        now.getTime() - (item?.ticketCreated?.getTime() || 0);
+      const hrs = Math.floor(diffMs / 3600000);
+      const mins = Math.floor((diffMs % 3600000) / 60000);
+      const secs = Math.floor((diffMs % 60000) / 1000);
+      durationStr = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+      const idRemedy = item.eskalasiIdRemedyItAoEms?.match(/INC\d{12}/i);
 
       return {
         // 3. Display date in WIB format: DD/MM
@@ -1219,7 +1250,7 @@ ORDER BY 1 ASC;
             })
           : '',
         idTicket: item.ticketNumber,
-        idRemedy: item.idRemedyNo,
+        idRemedy: idRemedy ? idRemedy[0] : null,
         duration: durationStr,
       };
     });
@@ -1236,5 +1267,66 @@ ORDER BY 1 ASC;
         totalItems: totalItems,
       },
     };
+  }
+
+    /**
+   * Generic helper to fetch reference data and create a normalized Map
+   * @param modelDelegate The prisma model (e.g. this.prisma.kIP)
+   * @param keyField The database column to be used as the Map Key (normalized)
+   * @param valueField The database column to be used as the Map Value
+   */
+  private async createLookupMap(
+    modelDelegate: any,
+    keyField: string,
+    valueField: string,
+  ): Promise<Map<string, string>> {
+    // 1. Dynamic Select: Fetch only the columns we need
+    const data = await modelDelegate.findMany({
+      select: {
+        [keyField]: true,
+        [valueField]: true,
+      },
+    });
+
+    // 2. Build Map with normalization
+    const lookupMap = new Map<string, string>();
+
+    for (const row of data) {
+      const rawKey = row[keyField];
+      const value = row[valueField];
+
+      // Ensure key exists and is a string before processing
+      if (rawKey && typeof rawKey === 'string') {
+        lookupMap.set(rawKey.trim().toLowerCase(), value || '');
+      }
+    }
+
+    return lookupMap;
+  }
+
+  extractCaseIdAndUnitId(input: string) {
+    // 1. Extract Site ID (B2b_site + 3 digits)
+    const siteMatch = input.match(/B2b_site\d{3}/i);
+    const unitId = siteMatch ? siteMatch[0] : null;
+
+    // 2. Extract Case ID (1- followed by 7-8 alphanumeric characters)
+    let caseId: string | null = null;
+
+    // Pattern A: Look for the explicit "Case ID:" label first (Higher priority)
+    const labeledMatch = input.match(/Case ID:\s*(1-[A-Z0-9]{7})/i);
+    
+    if (labeledMatch) {
+      caseId = labeledMatch[1];
+    } else {
+      // Pattern B: No label? Look for the ID immediately after the Site ID
+      // We remove the siteId from the search area to avoid confusion
+      const remainingText = input.replace(/^B2b_site\d{3}/, '');
+      const immediateMatch = remainingText.match(/^1-[A-Z0-9]{7}/i);
+      if (immediateMatch) {
+        caseId = immediateMatch[0];
+      }
+    }
+
+    return { unitId, caseId };
   }
 }
