@@ -37,10 +37,16 @@ export class OcaUploadService {
       'kategoriAccount',
     );
 
-    const fcrMap = await createLookupMap(
+    const fcrSatuanMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'isFcr',
+    );
+
+    const fcrMassalMap = await createLookupMap(
+      this.prisma.lookupKIP,
+      'compositeKey',
+      'fcrNonMassal',
     );
 
     const agentMap = await createLookupMap(
@@ -102,18 +108,56 @@ export class OcaUploadService {
         `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${row['IOT'].trim()}`
           .trim()
           .toLowerCase();
-      let fcrStatus = fcrMap.get(compositeFcrKey) || false;
+
+      const jumlahMsisdn = ExcelUtils.parseSafeInt(row['Jumlah MSISDN']);
+      let fcrStatus;
+      if (!jumlahMsisdn || jumlahMsisdn <= 10) {
+        if (row['Detail Category'] === '-' && row['IOT'] === '-') {
+          fcrStatus = true;
+              if (row['Ticket Number'] === 'TICKET-2228486') {
+        this.logger.debug(`Debugging Ticket TICKET-2228486: -`);
+      }
+        } else {
+          const isFcrSatuan = fcrSatuanMap.get(compositeFcrKey) || false;
+          // this.logger.debug(`FCR Satuan Check :${fcrSatuanMap.get(compositeFcrKey)} calculated: ${isFcrSatuan}`);
+          fcrStatus = isFcrSatuan;
+                       if (row['Ticket Number'] === 'TICKET-2228486') {
+        this.logger.debug(`Debugging Ticket TICKET-2228486: fcr satuan`);
+      }
+        }
+      } else {
+        const isFcrMassal = fcrMassalMap.get(compositeFcrKey) == 'FCR' ? true : false;
+        // this.logger.debug(`FCR Massal Check :${fcrMassalMap.get(compositeFcrKey)} calculated: ${isFcrMassal}`);
+        fcrStatus = isFcrMassal;
+                               if (row['Ticket Number'] === 'TICKET-2228486') {
+        this.logger.debug(`Debugging Ticket TICKET-2228486: fcr massal`);
+      }
+      }
+
+      if (row['Ticket Number'] === 'TICKET-2228486') {
+        this.logger.debug(`Debugging Ticket TICKET-2228486: compositeFcrKey=${compositeFcrKey}, jumlahMsisdn=${jumlahMsisdn}, fcrStatus=${fcrStatus}`);
+      }
+      
+      // let fcrStatus = fcrMap.get(compositeFcrKey) || false;
 
       let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
-      if (!derivedProduct) {
-        if(/iot/i.test(row['Sub Category']) &&
-        /ENGINEER|TECHNICAL TEAM/i.test(row['Department'])) {
-          derivedProduct = 'SOLUTION';
-        } else {
-          derivedProduct = 'CONNECTIVITY';
-          fcrStatus = true;
-        }
+      if (!derivedProduct && /TC|Engineer/i.test(agentMap.get(row['Assignee'].trim().toLowerCase()) || '')) {
+        this.logger.debug(`Applying fallback product logic for Ticket ${row['Ticket Number']} due to missing KIP mapping`);
+        derivedProduct = 'SOLUTION';
+        fcrStatus = true;
+      //                          if (row['Ticket Number'] === 'TICKET-2228486') {
+      //   this.logger.debug(`Debugging Ticket TICKET-2228486: masuk ke fallback product logic karena tidak ditemukan di KIP Map`);
+      // }
+      //   if(/iot/i.test(row['Sub Category']) &&
+      //   /ENGINEER|TECHNICAL TEAM/i.test(row['Department'])) {
+      //     derivedProduct = 'SOLUTION';
+      //     // fcrStatus = false;
+      //   } else {
+      //     derivedProduct = 'CONNECTIVITY';
+      //     fcrStatus = true;
+      //   }
+
       }
 
       const channel = determineChannel(
@@ -125,6 +169,10 @@ export class OcaUploadService {
         },
         agentMap,
       );
+
+      if (channel === 'callcenter') {
+        fcrStatus = false;
+      }
 
       // --- RUN SLA CALCULATION ---
       const slaStatus = calculateSlaStatus({
