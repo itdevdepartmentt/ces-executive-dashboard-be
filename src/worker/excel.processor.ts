@@ -5,14 +5,15 @@ import { CsatUploadService } from './services/csat-upload.service';
 import { CallUploadService } from './services/call-upload.service';
 import { OmnixUploadService } from './services/omnix-upload.service';
 import { OcaUploadService } from './services/oca-upload.service';
-import * as fs from 'fs'; 
+import * as fs from 'fs';
 import { Logger } from '@nestjs/common';
 import { AvayaUploadService } from './services/avaya-upload.service';
+import { CcAvayaUploadService } from './services/cc-avaya-upload.service';
 
 @Processor('excel-queue')
 export class ExcelProcessor extends WorkerHost {
   private readonly logger = new Logger(ExcelProcessor.name);
-  
+
   constructor(
     private prisma: PrismaService,
     private readonly csatUploadService: CsatUploadService,
@@ -20,6 +21,7 @@ export class ExcelProcessor extends WorkerHost {
     private readonly omnixUploadService: OmnixUploadService,
     private readonly ocaUploadService: OcaUploadService,
     private readonly avayaUploadService: AvayaUploadService,
+    private readonly ccAvayaUploadService: CcAvayaUploadService,
   ) {
     super();
   }
@@ -28,7 +30,7 @@ export class ExcelProcessor extends WorkerHost {
   async process(job: Job<any, any, string>): Promise<any> {
     const filePath = job.data.path;
 
-    this.logger.log(`Processing ${job.name} with id: ${job.id}`)
+    this.logger.log(`Processing ${job.name} with id: ${job.id}`);
     try {
       switch (job.name) {
         case 'process-csat-report':
@@ -36,7 +38,8 @@ export class ExcelProcessor extends WorkerHost {
         case 'process-omnix-report':
           return await this.omnixUploadService.process(job);
         case 'process-call-report':
-          return await this.callUploadService.process(job);
+          // return await this.callUploadService.process(job);
+          return await this.ccAvayaUploadService.process(job);
         case 'process-oca-report':
           return await this.ocaUploadService.process(job);
         case 'process-avaya-report':

@@ -12,6 +12,7 @@ import { OcaUpsertService } from './repository/oca-upsert.service';
 import { OcaReportSchedulerService } from './scheduler/oca-report-scheduler.service';
 import { AvayaUploadService } from './services/avaya-upload.service';
 import { CsatReportSchedulerService } from './scheduler/csat-report-scheduler.service';
+import { CcAvayaUploadService } from './services/cc-avaya-upload.service';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CsatReportSchedulerService } from './scheduler/csat-report-scheduler.se
     OcaUpsertService,
     OcaReportSchedulerService,
     CsatReportSchedulerService,
+    CcAvayaUploadService,
   ],
   exports: [BullModule], 
 })

@@ -347,6 +347,32 @@ model RawAvaya {
   @@map("raw_avaya")
 }
 
+model RawCC {
+  id                Int      @id @default(autoincrement())
+  date    DateTime
+  time    String
+  sequence Int
+  callsoffered  Int 
+  acdCalls  Int @map("acd_calls")
+  abanCalls Int @map("aban_calls")
+  updateStamp DateTime  @map("update_stamp")
+  unitType String @map("unit_type")
+  corp  String?
+  topicReason2 String? @map("topic_reason_2")
+
+  eskalasi                     String?
+  inSla                        Boolean?
+  isFcr                        Boolean?
+  isPareto                     Boolean?
+  isVip                        Boolean?
+  product                      String?
+  statusTiket                  Boolean?
+  validationStatus             String?
+
+  @@unique([date, time, sequence])
+  @@map("raw_cc")
+}
+
 model News {
   id          String    @id @default(cuid())
   title       String
