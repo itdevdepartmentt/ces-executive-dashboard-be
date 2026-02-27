@@ -156,6 +156,7 @@ model RawOmnix {
 
 model RawCall {
   id           Int       @id @default(autoincrement())
+  kipId        String    @map("kip_id")
   updateStamp  DateTime? @map("update_stamp")
   msisdn       String?   @map("msisdn")
   brand        String?   @map("brand")
@@ -187,7 +188,7 @@ model RawCall {
   statusTiket                  Boolean?
   validationStatus             String?
 
-  @@unique([updateStamp, msisdn])
+  @@unique([kipId])
   @@index([msisdn])
   @@index([updateStamp])
 }

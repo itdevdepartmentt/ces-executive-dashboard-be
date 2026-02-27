@@ -39,7 +39,7 @@ export class CallUploadService {
         if (row.number === 1) continue; // Skip Header
 
         // Get the raw notes text
-        const rawNotes = row.getCell(16).text;
+        const rawNotes = row.getCell(17).text;
 
         // Extract the specific fields
         const extractedData = this.extractNotesData(rawNotes);
@@ -54,7 +54,7 @@ export class CallUploadService {
         );
 
         const compositeFcrKey =
-          `${row.getCell(11).text}_${row.getCell(8).text}_${row.getCell(9).text}`
+          `${row.getCell(12).text}_${row.getCell(9).text}_${row.getCell(10).text}`
             .trim()
             .toLowerCase();
         // const fcrStatus = fcrMap.get(compositeFcrKey) || false;
@@ -62,22 +62,23 @@ export class CallUploadService {
         const derivedProduct = kipMap.get(compositeFcrKey || '-');
 
         const rowData = {
-          updateStamp: ExcelUtils.parseExcelDate(row.getCell(1).value),
-          msisdn: row.getCell(2).text,
-          brand: row.getCell(3).text,
-          unitType: row.getCell(4).text,
-          unitName: row.getCell(5).text,
-          areaName: row.getCell(6).text,
-          regName: row.getCell(7).text,
-          topicReason1: row.getCell(8).text,
-          topicReason2: row.getCell(9).text,
-          topicResult: row.getCell(10).text,
-          service: row.getCell(11).text,
-          appId: row.getCell(12).text,
-          userId: row.getCell(13).text,
-          employeeCode: row.getCell(14).text,
-          employeeName: row.getCell(15).text,
-          notes: row.getCell(16).text, // Long text field
+          kipId: row.getCell(1).text,
+          updateStamp: ExcelUtils.parseExcelDate(row.getCell(2).value),
+          msisdn: row.getCell(3).text,
+          brand: row.getCell(4).text,
+          unitType: row.getCell(5).text,
+          unitName: row.getCell(6).text,
+          areaName: row.getCell(7).text,
+          regName: row.getCell(8).text,
+          topicReason1: row.getCell(9).text,
+          topicReason2: row.getCell(10).text,
+          topicResult: row.getCell(11).text,
+          service: row.getCell(12).text,
+          appId: row.getCell(13).text,
+          userId: row.getCell(14).text,
+          employeeCode: row.getCell(15).text,
+          employeeName: row.getCell(16).text,
+          notes: row.getCell(17).text, // Long text field
 
           corp: extractedData.corp,
           projectId: extractedData.projectId,
@@ -120,9 +121,9 @@ export class CallUploadService {
 
     for (const row of rows) {
       // Safety: If either key is missing, we can't enforce uniqueness, so skip or allow
-      if (!row.updateStamp || !row.msisdn) continue;
+      if (!row.kipId) continue;
 
-      const uniqueKey = `${row.updateStamp.getTime()}_${row.msisdn}`;
+      const uniqueKey = row.kipId;
 
       // Overwrite ensures the latest row in the file wins
       uniqueRowsMap.set(uniqueKey, row);
@@ -135,6 +136,7 @@ export class CallUploadService {
     const values = cleanRows
       .map((row) => {
         return `(
+        ${ExcelUtils.formatSqlValue(row.kipId)},
         ${ExcelUtils.formatSqlValue(row.updateStamp)},
         ${ExcelUtils.formatSqlValue(row.msisdn)},
         ${ExcelUtils.formatSqlValue(row.brand)},
@@ -171,7 +173,7 @@ export class CallUploadService {
     // We update the other fields if a conflict is found, so the data stays fresh.
     const query = `
         INSERT INTO "RawCall" (
-        "update_stamp", "msisdn", "brand", "unit_type", "unit_name",
+        "kip_id", "update_stamp", "msisdn", "brand", "unit_type", "unit_name",
         "area_name", "reg_name", "topic_reason_1", "topic_reason_2",
         "topic_result", "service", "app_id", "user_id",
         "employee_code", "employee_name", "notes", "corp", "project_id",
@@ -179,8 +181,9 @@ export class CallUploadService {
         "product", "inSla", "isFcr", "eskalasi", "isPareto", "isVip"
         )
         VALUES ${values}
-        ON CONFLICT ("update_stamp", "msisdn")
+        ON CONFLICT ("kip_id")
         DO UPDATE SET
+        "update_stamp"    = EXCLUDED."update_stamp",
         "brand"           = EXCLUDED."brand",           
         "unit_type"       = EXCLUDED."unit_type",
         "unit_name"       = EXCLUDED."unit_name",
