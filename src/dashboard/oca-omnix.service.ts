@@ -244,7 +244,8 @@ ORDER BY 1 ASC;
       SELECT 
         "channel", "statusTiket", "inSla", "last_status", "product", 
         "resolve_time", "ticket_created", "isFcr", "isPareto",
-        'OCA' as "source_origin" -- Tagging the source just in case
+        'OCA' as "source_origin", -- Tagging the source just in case
+        'OCA' as "source_kip" 
       FROM "RawOca"
       WHERE "ticket_created" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
 
@@ -261,7 +262,8 @@ ORDER BY 1 ASC;
         "date_start_interaction" as "ticket_created",       -- MAP: Omnix timestamp -> Standard Name
         "isFcr",                                    -- MAP: Omnix column -> Standard Name
         "isPareto",                                    -- MAP: Default to false if Omnix lacks this
-        'OMNIX' as "source_origin"
+        'OMNIX' as "source_origin",
+        'OMNIX' as "source_kip"
       FROM "RawOmnix"
       WHERE "date_start_interaction" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
     
@@ -276,7 +278,8 @@ ORDER BY 1 ASC;
         "update_stamp" as "ticket_created",
         "isFcr",
         "isPareto",
-        'OCA' as "source_origin"
+        'OCA' as "source_origin",
+        'CALL' as "source_kip"
       FROM "RawCall"
       WHERE "update_stamp" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
     )
@@ -361,12 +364,14 @@ ORDER BY 1 ASC;
           stat.channel,
           'nama_perusahaan',
           stat.source_origin,
+          stat.source_kip,
         );
         const topKip = await this.getTopEntityForChannel(
           filter,
           stat.channel,
           'detail_category',
           stat.source_origin,
+          stat.source_kip,
         );
         return { ...stat, topCorporate: topCorp, topKip: topKip };
       }),
@@ -380,6 +385,7 @@ ORDER BY 1 ASC;
     channel: string,
     metricType: 'nama_perusahaan' | 'detail_category',
     source: 'OCA' | 'OMNIX' | 'CALL',
+    sourceKip: 'OCA' | 'OMNIX' | 'CALL',
   ) {
     let tableName = '';
     let metricColumn = ''; // The target column (Company or Category)
@@ -387,22 +393,42 @@ ORDER BY 1 ASC;
     let channelColumn = ''; // <--- NEW: Dynamic channel column
 
     // 1. CONFIGURE MAPPING BASED ON SOURCE
-    if (source === 'OCA') {
-      tableName = '"RawOca"';
-      metricColumn = `"${metricType}"`; // e.g. "nama_perusahaan"
-      dateColumn = '"ticket_created"';
-      channelColumn = '"channel"'; // OCA uses "channel"
-    } else if (source === 'CALL') {
+    // 1. CONFIGURE MAPPING
+  if (source === 'OCA' || source === 'CALL') {
+    // Check if we are dealing with the Call Center merge logic
+    // We treat 'callcenter' (from OCA) and 'CALL' source as the same table logic
+    if (sourceKip === 'CALL') {
       tableName = '"RawCall"';
       dateColumn = '"update_stamp"';
-      channelColumn = '"unit_type"'; // CALL uses "unit_type"
+      channelColumn = '"unit_type"';
+      
+      metricColumn = (metricType === 'nama_perusahaan') 
+        ? '"corp"' 
+        : '"topic_reason_2"';
+    } else {
+      // Standard OCA logic
+      tableName = '"RawOca"';
+      metricColumn = `"${metricType}"`;
+      dateColumn = '"ticket_created"';
+      channelColumn = '"channel"';
+    }
+    // if (source === 'OCA') {
+    //   tableName = '"RawOca"';
+    //   metricColumn = `"${metricType}"`; // e.g. "nama_perusahaan"
+    //   dateColumn = '"ticket_created"';
+    //   channelColumn = '"channel"'; // OCA uses "channel"
+    // } 
+    // else if (source === 'CALL') {
+    //   tableName = '"RawCall"';
+    //   dateColumn = '"update_stamp"';
+    //   channelColumn = '"unit_type"'; // CALL uses "unit_type"
 
-      // Map the metric types to Call columns
-      if (metricType === 'nama_perusahaan') {
-        metricColumn = '"corp"'; // Replace with actual Call column
-      } else {
-        metricColumn = '"topic_reason_2"'; // Replace with actual Call column
-      }
+    //   // Map the metric types to Call columns
+    //   if (metricType === 'nama_perusahaan') {
+    //     metricColumn = '"corp"'; // Replace with actual Call column
+    //   } else {
+    //     metricColumn = '"topic_reason_2"'; // Replace with actual Call column
+    //   }
     } else {
       tableName = '"RawOmnix"';
       dateColumn = '"date_start_interaction"';
@@ -418,22 +444,82 @@ ORDER BY 1 ASC;
 
     // 2. RUN QUERY
     // We use ${channelColumn} in the WHERE clause instead of hardcoding "channel"
+    // const result = await this.prisma.$queryRawUnsafe<any[]>(
+    //   `
+    //     SELECT ${metricColumn} as name, COUNT(*)::int as total, COUNT(*) FILTER (WHERE "eskalasi" <> '')::int as ticket, ROUND((COUNT(*) FILTER (WHERE "isFcr")::decimal / COUNT(*)) * 100, 2) as "pctFcr"
+    //     FROM ${tableName}
+    //     WHERE ${channelColumn} = $1 
+    //       AND (TRIM(${metricColumn}) <> '-' AND TRIM(${metricColumn}) <> '' AND ${metricColumn} NOTNULL)
+    //       AND "statusTiket"
+    //       AND ${dateColumn} BETWEEN $2::timestamp AND $3::timestamp
+    //     GROUP BY ${metricColumn}
+    //     ORDER BY total DESC
+    //     LIMIT 5
+    //   `,
+    //   channel,
+    //   filter.startDate,
+    //   filter.endDate,
+    // );
     const result = await this.prisma.$queryRawUnsafe<any[]>(
-      `
-        SELECT ${metricColumn} as name, COUNT(*)::int as total, COUNT(*) FILTER (WHERE "eskalasi" <> '')::int as ticket, ROUND((COUNT(*) FILTER (WHERE "isFcr")::decimal / COUNT(*)) * 100, 2) as "pctFcr"
-        FROM ${tableName}
-        WHERE ${channelColumn} = $1 
-          AND (TRIM(${metricColumn}) <> '-' AND TRIM(${metricColumn}) <> '' AND ${metricColumn} NOTNULL)
-          AND "statusTiket"
-          AND ${dateColumn} BETWEEN $2::timestamp AND $3::timestamp
-        GROUP BY ${metricColumn}
-        ORDER BY total DESC
-        LIMIT 5
-      `,
-      channel,
-      filter.startDate,
-      filter.endDate,
-    );
+    `
+    WITH "UnifiedDetail" AS (
+      -- 1. DATA FROM OCA
+      SELECT 
+        "channel",
+        ${metricType === 'nama_perusahaan' ? '"nama_perusahaan"' : '"detail_category"'} as "metric_name",
+        "ticket_created" as "date_ref",
+        "eskalasi",
+        "isFcr",
+        "statusTiket"
+      FROM "RawOca"
+      WHERE "channel" = $1
+
+      UNION ALL
+
+      -- 2. DATA FROM CALL (Only if the channel is callcenter or source is CALL)
+      SELECT 
+        'callcenter' as "channel",
+        ${metricType === 'nama_perusahaan' ? '"corp"' : '"topic_reason_2"'} as "metric_name",
+        "update_stamp" as "date_ref",
+        "eskalasi", -- Fallback for missing column
+        "isFcr",
+        "statusTiket"
+      FROM "RawCall"
+      WHERE 'callcenter' = $1
+
+      UNION ALL
+
+      -- 3. DATA FROM OMNIX
+      SELECT 
+        "channel_name" as "channel",
+        ${metricType === 'nama_perusahaan' ? '"ticket_perusahaan"' : '"subCategory"'} as "metric_name",
+        "date_start_interaction" as "date_ref",
+        "eskalasi",
+        "isFcr",
+        "statusTiket"
+      FROM "RawOmnix"
+      WHERE "channel_name" = $1
+    )
+    SELECT 
+      "metric_name" as name, 
+      COUNT(*)::int as total, 
+      COUNT(*) FILTER (WHERE "eskalasi" <> '' AND "eskalasi" IS NOT NULL)::int as ticket, 
+      CASE WHEN COUNT(*) > 0 
+        THEN ROUND((COUNT(*) FILTER (WHERE "isFcr")::decimal / COUNT(*)) * 100, 2) 
+        ELSE 0 END as "pctFcr"
+    FROM "UnifiedDetail"
+    WHERE "channel" = $1 
+      AND ("metric_name" IS NOT NULL AND TRIM("metric_name"::text) NOT IN ('', '-'))
+      AND "statusTiket" = true
+      AND "date_ref" BETWEEN $2::timestamp AND $3::timestamp
+    GROUP BY "metric_name"
+    ORDER BY total DESC
+    LIMIT 5
+    `,
+    channel,
+    filter.startDate,
+    filter.endDate,
+  );
 
     return result || [];
   }
