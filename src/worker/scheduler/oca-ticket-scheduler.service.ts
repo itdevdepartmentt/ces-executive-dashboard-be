@@ -19,11 +19,11 @@ export class OcaTicketSchedulerService {
   // Run every 10 minutes
   @Cron(process.env.CRON_SYNC_DAILY_OCA ?? CronExpression.EVERY_30_MINUTES)
   async handleCron() {
+    this.logger.debug('Starting ticket sync...');
+
     // 1. Determine Date Range (e.g., fetch last 24 hours to catch updates)
     // const startDate = moment().subtract(1, 'days').format('YYYY-MM-DD');
     const todayDate = moment().tz('Asia/Jakarta').format('YYYY-MM-DD');
-
-    this.logger.debug(`Starting ticket sync for date ${todayDate}`);
 
     let page = 1;
     let hasMore = true;
@@ -74,6 +74,8 @@ export class OcaTicketSchedulerService {
       const dbMap = new Map(
         dbRows.map((r) => [r.ticket_number, r.last_update?.getTime()]),
       );
+
+      this.logger.log(`syncing ticket for date ${todayDate}`);
 
       const ticketsToProcess = tickets.filter((t) => {
         const dbLast = dbMap.get(t.ticket_number);
