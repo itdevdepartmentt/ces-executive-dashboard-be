@@ -222,13 +222,20 @@ export class CallUploadService {
     // 1. Extract Corp Name
     // Looks for "Corp :" followed by text until the end of the line
     const corpMatch = cleanNotes.match(/Corp\s*:\s*(.*)/i);
-    let corp = corpMatch ? corpMatch[1].trim() : null;
+    const companyMatch = cleanNotes.match(/Nama\s*Perusahaan\s*:\s*(.*)/i);
+    // let corp = corpMatch ? corpMatch[1].trim() : null;
+    let corp = '';
+    if (corpMatch) {
+      corp = corpMatch[1].trim();
+    } else if (companyMatch) {
+      corp = companyMatch[1].trim();
+    }
 
     // SAFETY CHECK:
     // If the extracted 'corp' accidentally contains the next field's label
     // (e.g. if the file was formatted as "Corp : Project ID: 123"), clean it.
     if (corp && /Project\s*ID/i.test(corp)) {
-      corp = null;
+      corp = '';
     }
 
     // 2. Extract Project ID
