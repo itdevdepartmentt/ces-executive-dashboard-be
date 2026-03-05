@@ -54,6 +54,11 @@ export class LookupManagementController {
     return this.service.deleteAccountMapping(id);
   }
 
+  @Delete('account-mapping')
+  deleteAllAccountMappings() {
+    return this.service.deleteAllAccountMappings();
+  }
+
   // ─── LookupKIP ────────────────────────────
   @Get('lookup-kip')
   findAllLookupKIP(@Query() query: QueryLookupDto) {
@@ -78,6 +83,11 @@ export class LookupManagementController {
     return this.service.deleteLookupKIP(id);
   }
 
+  @Delete('lookup-kip')
+  deleteAllLookupKIP() {
+    return this.service.deleteAllLookupKIP();
+  }
+
   // ─── LookupAgent ──────────────────────────
   @Get('lookup-agent')
   findAllLookupAgent(@Query() query: QueryLookupDto) {
@@ -100,5 +110,10 @@ export class LookupManagementController {
   @Delete('lookup-agent/:id')
   deleteLookupAgent(@Param('id', ParseIntPipe) id: number) {
     return this.service.deleteLookupAgent(id);
+  }
+
+  @Delete('lookup-agent')
+  deleteAllLookupAgent() {
+    return this.service.deleteAllLookupAgent();
   }
 }

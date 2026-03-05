@@ -58,6 +58,10 @@ export class LookupManagementService {
     return this.prisma.accountMapping.delete({ where: { id } });
   }
 
+  async deleteAllAccountMappings() {
+    return this.prisma.accountMapping.deleteMany();
+  }
+
   // ═══════════════════════════════════════════
   //  LookupKIP
   // ═══════════════════════════════════════════
@@ -103,6 +107,10 @@ export class LookupManagementService {
     return this.prisma.lookupKIP.delete({ where: { id } });
   }
 
+  async deleteAllLookupKIP() {
+    return this.prisma.lookupKIP.deleteMany();
+  }
+
   // ═══════════════════════════════════════════
   //  LookupAgent
   // ═══════════════════════════════════════════
@@ -143,5 +151,9 @@ export class LookupManagementService {
     const existing = await this.prisma.lookupAgent.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('LookupAgent not found');
     return this.prisma.lookupAgent.delete({ where: { id } });
+  }
+
+  async deleteAllLookupAgent() {
+    return this.prisma.lookupAgent.deleteMany();
   }
 }
