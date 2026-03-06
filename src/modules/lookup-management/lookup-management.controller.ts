@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -9,7 +10,11 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { LookupManagementService } from './lookup-management.service';
 import {
   CreateAccountMappingDto,
@@ -29,6 +34,35 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @Roles('ADMIN')
 export class LookupManagementController {
   constructor(private readonly service: LookupManagementService) {}
+
+  @Post(':lookupType/upload-csv')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        const isCsvMime =
+          file.mimetype === 'text/csv' ||
+          file.mimetype === 'application/csv' ||
+          file.mimetype === 'application/vnd.ms-excel';
+        const isCsvExt = file.originalname?.toLowerCase().endsWith('.csv');
+
+        if (!isCsvMime && !isCsvExt) {
+          return cb(
+            new BadRequestException('Only CSV files are allowed for bulk upload'),
+            false,
+          );
+        }
+
+        return cb(null, true);
+      },
+    }),
+  )
+  uploadLookupCsv(
+    @Param('lookupType') lookupType: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.bulkUploadFromCsv(lookupType, file);
+  }
 
   // ─── AccountMapping ───────────────────────
   @Get('account-mapping')
