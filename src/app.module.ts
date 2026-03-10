@@ -17,6 +17,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { NewsModule } from './modules/news/news.module';
 import { LookupManagementModule } from './modules/lookup-management/lookup-management.module';
+import { RawDownloadModule } from './modules/raw-download/raw-download.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { LookupManagementModule } from './modules/lookup-management/lookup-manag
     IncidentModule,
     NewsModule,
     LookupManagementModule,
+    RawDownloadModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
