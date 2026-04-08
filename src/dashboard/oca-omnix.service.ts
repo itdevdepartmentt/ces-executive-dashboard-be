@@ -16,6 +16,7 @@ export class OcaOmnixService {
                 "last_status", 
                 "statusTiket", 
                 "inSla",
+              "isFcr",
                 "ticket_created" as "ticket_timestamp",
                 "channel"
             FROM "RawOca"
@@ -28,6 +29,7 @@ export class OcaOmnixService {
                 "ticket_status_name" as "last_status", 
                 "statusTiket", 
                 "inSla",
+              "isFcr",
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
             FROM "RawOmnix"
@@ -37,6 +39,7 @@ export class OcaOmnixService {
                 'closed' as "last_status",
                 "statusTiket",
                 "inSla",
+              "isFcr",
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
             FROM "RawCall"
@@ -96,10 +99,12 @@ export class OcaOmnixService {
 
         FROM "UnifiedTickets"
         WHERE "ticket_timestamp" >= $1::timestamptz
-        AND "ticket_timestamp" <  $2::timestamptz;
+        AND "ticket_timestamp" <  $2::timestamptz
+        AND ($3::boolean IS NULL OR "isFcr" = $3::boolean);
         `,
         filter.startDate,
         filter.endDate,
+        filter.isFcr ?? null,
       ),
 
       // B. DAILY TREND (EndDate and 6 days before it = 7 days total)
@@ -132,11 +137,13 @@ export class OcaOmnixService {
         FROM "UnifiedTickets"
         WHERE "ticket_timestamp" >= ($1::date - INTERVAL '6 days') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
         AND "ticket_timestamp" <  ($1::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
+        AND ($2::boolean IS NULL OR "isFcr" = $2::boolean)
         GROUP BY 1
         ORDER BY 1 ASC;
 
         `,
         filter.endDate,
+        filter.isFcr ?? null,
       ),
 
       // C. 3-HOUR INTERVAL TREND (Only for EndDate)
@@ -159,10 +166,12 @@ SELECT
 FROM "UnifiedTickets"
 WHERE ticket_timestamp >= ($1::date - INTERVAL '7 hours')  -- 00:00 WIB → UTC
   AND ticket_timestamp <  (($1::date + INTERVAL '1 day') - INTERVAL '7 hours') -- 00:00 next day WIB → UTC
+  AND ($2::boolean IS NULL OR "isFcr" = $2::boolean)
 GROUP BY 1
 ORDER BY 1 ASC;
         `,
         filter.endDate,
+        filter.isFcr ?? null,
       ),
     ]);
     const [csatScore] = await this.getCsatScore(filter);
@@ -193,6 +202,7 @@ ORDER BY 1 ASC;
     WHERE "ticket_created" >= ${startDate}::timestamptz 
       AND "ticket_created" < ${endDate}::timestamptz
       AND "statusTiket"
+      AND (${filter.isFcr ?? null}::boolean IS NULL OR "isFcr" = ${filter.isFcr ?? null}::boolean)
       AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
       
     `;
@@ -352,6 +362,7 @@ ORDER BY 1 ASC;
             ELSE 0 END as "pctNotPareto"
 
     FROM "UnifiedData"
+    WHERE (${filter.isFcr ?? null}::boolean IS NULL OR "isFcr" = ${filter.isFcr ?? null}::boolean)
     GROUP BY LOWER("channel"), "source_origin"
   `;
 
@@ -512,6 +523,7 @@ ORDER BY 1 ASC;
       AND ("metric_name" IS NOT NULL AND TRIM("metric_name"::text) NOT IN ('', '-'))
       AND "statusTiket" = true
       AND "date_ref" BETWEEN $2::timestamp AND $3::timestamp
+      AND ($4::boolean IS NULL OR "isFcr" = $4::boolean)
     GROUP BY "metric_name"
     ORDER BY total DESC
     LIMIT 5
@@ -519,6 +531,7 @@ ORDER BY 1 ASC;
     channel,
     filter.startDate,
     filter.endDate,
+    filter.isFcr ?? null,
   );
 
     return result || [];

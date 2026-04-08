@@ -42,10 +42,16 @@ export class DailyOcaTicketProcessor extends WorkerHost {
       'kategoriAccount',
     );
 
-    const fcrMap = await createLookupMap(
+    const fcrSatuanMap = await createLookupMap(
       this.prisma.lookupKIP,
       'compositeKey',
       'isFcr',
+    );
+
+    const fcrMassalMap = await createLookupMap(
+      this.prisma.lookupKIP,
+      'compositeKey',
+      'fcrNonMassal',
     );
 
     const agentMap = await createLookupMap(
@@ -82,26 +88,45 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         // C. Calculations (Using the Maps we fetched once)
         const classification = classifyTicket(mappedData);
 
+        const iotValue = mappedData.iot?.trim()
+          ? mappedData.iot.trim().toLowerCase()
+          : '-';
+
         const compositeFcrKey =
-          `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${mappedData.iot?.trim() || ''}`
+          `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${iotValue}`
             .trim()
             .toLowerCase();
-        let fcrStatus = fcrMap.get(compositeFcrKey) || false;
+
+        const jumlahMsisdn = ExcelUtils.parseSafeInt(mappedData.jumlahMsisdn);
+        let fcrStatus;
+        if (!jumlahMsisdn || jumlahMsisdn <= 10) {
+          if (mappedData.detailCategory === '-' && mappedData.iot === '-') {
+            fcrStatus = true;
+          } else {
+            const isFcrSatuan = fcrSatuanMap.get(compositeFcrKey) || false;
+            fcrStatus = isFcrSatuan;
+          }
+        } else {
+          const isFcrMassal = fcrMassalMap.get(compositeFcrKey) == 'FCR';
+          fcrStatus = isFcrMassal;
+        }
 
         let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
         if (
           !derivedProduct &&
-          /iot/i.test(mappedData.subCategory || '') &&
-          /ENGINEER/i.test(mappedData.department || '')
+          /TC|Engineer/i.test(
+            agentMap.get(mappedData.assignee?.trim().toLowerCase()) || '',
+          )
         ) {
           derivedProduct = 'SOLUTION';
-        } else {
-          derivedProduct = 'CONNECTIVITY';
           fcrStatus = true;
         }
 
         const channel = determineChannel(mappedData, agentMap);
+        if (channel === 'callcenter') {
+          fcrStatus = false;
+        }
 
         const rawNamaPerusahaan = mappedData.namaPerusahaan;
         const normalizedNamaPerusahaan =
@@ -136,7 +161,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
           channel: channel,
           validationStatus: classification.status,
           statusTiket: classification.isValid,
-          product: derivedProduct,
+          product: derivedProduct?.toUpperCase() || '-',
           sla: slaStatus,
           fcr: fcrStatus,
           eskalasi: typeEskalasi,
