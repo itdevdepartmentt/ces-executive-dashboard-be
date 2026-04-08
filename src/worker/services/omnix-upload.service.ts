@@ -134,6 +134,18 @@ export class OmnixUploadService {
       'isFcr',
     );
 
+    const fcrMassalMap = await this.createLookupMap(
+      this.prisma.lookupKIP,
+      'compositeKeyOmnix',
+      'fcrNonMassal',
+    );
+
+    const agentMap = await this.createLookupMap(
+      this.prisma.lookupAgent,
+      'namaAgent',
+      'group',
+    );
+
     this.logger.log(`Starting Omnix Batch Upload Service`);
 
     const filePath = job.data.path;
@@ -176,13 +188,48 @@ export class OmnixUploadService {
         const ticketSubject = col(H.subject).text || '';
         const isVip = this.vipRegex.test(ticketSubject);
 
+        const jumlahMsisdn = ExcelUtils.parseSafeInt(col(H.unitId).value);
+
         const compositeFcrKey =
           `${col(H.mainCategory).text}_${col(H.category).text}_${col(H.subCategory).text}`
             .trim()
             .toLowerCase();
-        const fcrStatus = fcrMap.get(compositeFcrKey) || false;
 
-        const derivedProduct = kipMap.get(compositeFcrKey || '-');
+        const detailSubCategory = col(H.detailSubCategory).text.trim();
+        const detailSubCategory2 = col(H.detailSubCategory2).text.trim();
+
+        let fcrStatus;
+        if (!jumlahMsisdn || jumlahMsisdn <= 2) {
+          const isFcrSatuan = fcrMap.get(compositeFcrKey) || false;
+          fcrStatus = isFcrSatuan;
+        } else {
+          const isFcrMassal = fcrMassalMap.get(compositeFcrKey) == 'FCR';
+          fcrStatus = isFcrMassal;
+        }
+
+        let derivedProduct = kipMap.get(compositeFcrKey || '-');
+
+        const agentName = (col(H.createdByName).text || col(H.updatedByName).text || '')
+          .trim()
+          .toLowerCase();
+        const agentGroup = agentMap.get(agentName) || '';
+
+        if (
+          !derivedProduct &&
+          /TC|Engineer/i.test(agentGroup)
+        ) {
+          this.logger.debug(
+            `Applying fallback product logic for Omnix Ticket ${col(H.ticketId).text} due to missing KIP mapping`,
+          );
+          derivedProduct = 'SOLUTION';
+          fcrStatus = true;
+        }
+
+        const channel = this.determineChannel(row, col, H);
+
+        if (channel === 'callcenter') {
+          fcrStatus = false;
+        }
 
         // --- 2. RUN SLA CALCULATION ---
         const slaStatus = classification.isValid
@@ -212,8 +259,6 @@ export class OmnixUploadService {
             return null; // or return value if you want to save as plain string
           }
         };
-
-        const channel = this.determineChannel(row, col, H);
 
         const rowData = {
           // --- 1. Basic Ticket Info ---
