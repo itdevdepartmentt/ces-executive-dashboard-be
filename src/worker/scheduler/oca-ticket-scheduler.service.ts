@@ -23,7 +23,7 @@ export class OcaTicketSchedulerService {
 
     // 1. Determine Date Range (e.g., fetch last 24 hours to catch updates)
     // const startDate = moment().subtract(1, 'days').format('YYYY-MM-DD');
-    const todayDate = moment().tz('Asia/Jakarta').subtract(2, 'days').format('YYYY-MM-DD');
+    const todayDate = moment().tz('Asia/Jakarta').format('YYYY-MM-DD');
 
     let page = 1;
     let hasMore = true;
