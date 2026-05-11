@@ -63,10 +63,23 @@ export const TICKET_RULES = [
     prop: 'description',
     // Pre-compiled Regex for speed
     regex: createRegex(
-      'spam / out of topic / double ticket / dobel ticket / double tiket / dobel tiket / balikan ems / balasan ems',
+      'out of topic / double ticket / dobel ticket / double tiket / dobel tiket / balikan ems / balasan ems',
     ),
     check: function (val: string) {
       return this.regex.test(val || '');
+    },
+  },
+  {
+    status: 'Double',
+    column: 'Description',
+    prop: 'description',
+    // Pre-compiled Regex for speed
+    regex: createRegex(
+      'spam',
+    ),
+    check: function (val: string) {
+      const normalized = (val || '').trim();
+      return this.regex.test(normalized) && normalized.length < 200;
     },
   },
   {

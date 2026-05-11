@@ -104,8 +104,11 @@ export class OcaUploadService {
       const ticketSubject = row['Ticket Subject'] || '';
       const isVip = VIP_REGEX.test(ticketSubject);
 
+      const iotValue = row['IOT']?.trim() ? row['IOT'].trim().toLowerCase() : "-";
+      this.logger.log(`Processing Ticket ${row['Ticket Number']}: IOT value is '${row['IOT']}', normalized to '${iotValue}'`);
+
       const compositeFcrKey =
-        `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${row['IOT'].trim()}`
+        `${row['Category'].trim()}_${row['Sub Category'].trim()}_${row['Detail Category'].trim()}_${iotValue}`
           .trim()
           .toLowerCase();
 
