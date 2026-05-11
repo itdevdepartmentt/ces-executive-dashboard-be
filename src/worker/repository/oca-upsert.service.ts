@@ -16,11 +16,15 @@ export class OcaUpsertService {
   async saveBatch(rows: any[]) {
     if (rows.length === 0) return;
 
-    // 1. DEDUPLICATE IN MEMORY
+    // 1. DEDUPLICATE IN MEMORY (Trim and Uppercase ticketNumber)
     const uniqueRowsMap = new Map<string, any>();
     for (const row of rows) {
       if (!row.ticketNumber) continue;
-      uniqueRowsMap.set(row.ticketNumber, row);
+      const normalizedTicket = row.ticketNumber.toString().trim().toUpperCase();
+      uniqueRowsMap.set(normalizedTicket, {
+        ...row,
+        ticketNumber: normalizedTicket,
+      });
     }
 
     const cleanRows = Array.from(uniqueRowsMap.values());
