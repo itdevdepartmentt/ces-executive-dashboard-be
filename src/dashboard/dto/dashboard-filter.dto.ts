@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+
+export const PRIORITY_TYPES = ['roaming', 'extra', 'vip', 'pareto', 'urgent', 'cc'] as const;
+export type PriorityType = (typeof PRIORITY_TYPES)[number];
 
 export class DashboardFilterDto {
   @IsOptional()
@@ -27,4 +30,11 @@ export class PaginationDto extends DashboardFilterDto {
   @IsOptional()
   @IsString()
   search?: string;
+}
+
+export class PriorityTicketQueryDto extends PaginationDto {
+  @IsIn(PRIORITY_TYPES, {
+    message: `type must be one of: ${PRIORITY_TYPES.join(', ')}`,
+  })
+  type: PriorityType;
 }

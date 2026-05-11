@@ -6,7 +6,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
-import { DashboardFilterDto, PaginationDto } from './dto/dashboard-filter.dto';
+import { DashboardFilterDto, PaginationDto, PriorityTicketQueryDto } from './dto/dashboard-filter.dto';
 import { OcaService } from './oca.service';
 import { OcaOmnixService } from './oca-omnix.service';
 import { JwtAuthGuard } from 'src/common/guard/jwt-auth.guard';
@@ -98,5 +98,13 @@ export class DashboardController {
   @Get('priority')
   getPriority(@Query() filter: DashboardFilterDto) {
     return this.ocaService.getPriorityData(filter);
+  }
+
+  @Get('priority-tickets')
+  getPriorityTickets(
+    @Query(new ValidationPipe({ transform: true }))
+    query: PriorityTicketQueryDto,
+  ) {
+    return this.ocaService.getPriorityTickets(query);
   }
 }

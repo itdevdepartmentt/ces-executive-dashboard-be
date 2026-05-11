@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
-import { DashboardFilterDto, PaginationDto } from './dto/dashboard-filter.dto';
+import { DashboardFilterDto, PaginationDto, PriorityTicketQueryDto, PriorityType } from './dto/dashboard-filter.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -198,6 +198,85 @@ ORDER BY 1 ASC;
     `;
 
     return priorityData;
+  }
+
+  // ---------------------------------------------------------
+  // PRIORITY TICKET DETAIL (Paginated + Searchable)
+  // ---------------------------------------------------------
+  async getPriorityTickets(query: PriorityTicketQueryDto) {
+    const { type, startDate, endDate, page = 1, limit = 10, search } = query;
+    const offset = (page - 1) * limit;
+
+    // Map type to SQL condition (mirrors getPriorityData aggregation)
+    const typeConditions: Record<PriorityType, string> = {
+      roaming: `"ticket_subject" ILIKE '%ROAMING%'`,
+      extra: `"ticket_subject" ILIKE '%EKSTRA KUOTA%'`,
+      vip: `"isVip" = true`,
+      pareto: `"isPareto" = true`,
+      urgent: `"ticket_subject" ILIKE '%URGENT%'`,
+      cc: `"ticket_subject" ILIKE '%CC%'`,
+    };
+
+    const typeCondition = typeConditions[type];
+
+    // Search condition (optional)
+    const searchCondition = search
+      ? `AND ("ticket_number" ILIKE '%' || $3 || '%' OR "customer_name" ILIKE '%' || $3 || '%' OR "ticket_subject" ILIKE '%' || $3 || '%')`
+      : '';
+
+    const baseParams = search
+      ? [startDate, endDate, search]
+      : [startDate, endDate];
+
+    // Count query
+    const countQuery = `
+      SELECT COUNT(*)::int AS total
+      FROM "RawOca"
+      WHERE "ticket_created" >= $1::timestamptz
+        AND "ticket_created" < $2::timestamptz
+        AND "statusTiket"
+        AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
+        AND ${typeCondition}
+        ${searchCondition}
+    `;
+
+    // Data query
+    const dataQuery = `
+      SELECT
+        "ticket_number"  AS "ticketNumber",
+        "customer_name"  AS "customerName",
+        "ticket_subject" AS "subject",
+        "channel",
+        "last_status"    AS "status",
+        "priority",
+        "ticket_created" AS "createdAt"
+      FROM "RawOca"
+      WHERE "ticket_created" >= $1::timestamptz
+        AND "ticket_created" < $2::timestamptz
+        AND "statusTiket"
+        AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
+        AND ${typeCondition}
+        ${searchCondition}
+      ORDER BY "ticket_created" DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const [countResult, data] = await Promise.all([
+      this.prisma.$queryRawUnsafe<{ total: number }[]>(countQuery, ...baseParams),
+      this.prisma.$queryRawUnsafe<any[]>(dataQuery, ...baseParams),
+    ]);
+
+    const total = countResult[0]?.total ?? 0;
+
+    return {
+      data,
+      meta: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getCsatScore(filter: DashboardFilterDto) {
