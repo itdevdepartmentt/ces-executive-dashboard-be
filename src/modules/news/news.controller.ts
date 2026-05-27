@@ -50,7 +50,14 @@ export class NewsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/news',
+        destination: (req, file, cb) => {
+          const fs = require('fs');
+          const dir = './uploads/news';
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          cb(null, dir);
+        },
         filename: (req, file, cb) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -59,10 +66,23 @@ export class NewsController {
       }),
     }),
   )
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+    let extractedText = '';
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      try {
+        const fs = require('fs');
+        const pdfParse = require('pdf-parse');
+        const dataBuffer = fs.readFileSync(file.path);
+        const pdfData = await pdfParse(dataBuffer);
+        extractedText = pdfData.text || '';
+      } catch (err) {
+        console.error('Failed to parse PDF content:', err);
+      }
+    }
     return {
-      url: `/uploads/news/${file.filename}`,
+      url: `/api/uploads/news/${file.filename}`,
       name: file.originalname,
+      extractedText,
     };
   }
 

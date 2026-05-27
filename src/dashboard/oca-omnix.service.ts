@@ -111,36 +111,50 @@ export class OcaOmnixService {
       this.prisma.$queryRawUnsafe<any[]>(
         `
             ${unifiedCte}
+            , DateSeries AS (
+                SELECT generate_series(
+                    ($1::date - INTERVAL '6 days')::date,
+                    $1::date,
+                    '1 day'::interval
+                )::date AS date
+            ),
+            UnifiedFiltered AS (
+                SELECT 
+                    DATE("ticket_timestamp" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') AS ticket_date,
+                    "statusTiket",
+                    "channel",
+                    "inSla"
+                FROM "UnifiedTickets"
+                WHERE "ticket_timestamp" >= ($1::date - INTERVAL '6 days') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
+                AND "ticket_timestamp" <  ($1::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
+                AND ($2::boolean IS NULL OR "isFcr" = $2::boolean)
+            )
         SELECT 
-            TO_CHAR("ticket_timestamp" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "date",
-            COUNT(*)::int AS "value",
+            TO_CHAR(ds.date, 'YYYY-MM-DD') AS "date",
+            COUNT(uf.ticket_date)::int AS "value",
             CASE 
-                WHEN COUNT(*) FILTER (
-                    WHERE "statusTiket"
-                    AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                WHEN COUNT(uf.ticket_date) FILTER (
+                    WHERE uf."statusTiket"
+                    AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
-                        COUNT(*) FILTER (
-                            WHERE "inSla"  AND "statusTiket"
-                            AND "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                        COUNT(uf.ticket_date) FILTER (
+                            WHERE uf."inSla"  AND uf."statusTiket"
+                            AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
-                        / COUNT(*) FILTER (
-                            WHERE "statusTiket"
-                            AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+                        / COUNT(uf.ticket_date) FILTER (
+                            WHERE uf."statusTiket"
+                            AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
                         2
                     )
                 ELSE 0
             END AS "sla"
-        FROM "UnifiedTickets"
-        WHERE "ticket_timestamp" >= ($1::date - INTERVAL '6 days') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
-        AND "ticket_timestamp" <  ($1::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Jakarta' AT TIME ZONE 'UTC'
-        AND ($2::boolean IS NULL OR "isFcr" = $2::boolean)
-        GROUP BY 1
-        ORDER BY 1 ASC;
-
+        FROM DateSeries ds
+        LEFT JOIN UnifiedFiltered uf ON ds.date = uf.ticket_date
+        GROUP BY ds.date
+        ORDER BY ds.date ASC;
         `,
         filter.endDate,
         filter.isFcr ?? null,
@@ -196,7 +210,8 @@ ORDER BY 1 ASC;
     count(*) filter(where "ticket_subject" ILIKE '%URGENT%')::int as urgent,
     count(*) filter(where "isPareto")::int as pareto,
     count(*) filter(where "ticket_subject" ILIKE '%ROAMING%')::int as roaming,
-    count(*) filter(where "ticket_subject" ILIKE '%EKSTRA KUOTA%')::int as extra
+    count(*) filter(where "ticket_subject" ILIKE '%EKSTRA KUOTA%')::int as extra,
+    count(*) filter(where "ticket_subject" ILIKE '%CC%')::int as cc
 
     from "RawOca" 
     WHERE "ticket_created" >= ${startDate}::timestamptz 
@@ -290,37 +305,67 @@ ORDER BY 1 ASC;
   }
 
   async getCsatScore(filter: DashboardFilterDto) {
-    const { endDate } = filter;
+    const { startDate, endDate } = filter;
 
+    // First, try to get CSAT data for the selected date range
     const csatScore = await this.prisma.$queryRaw<any[]>`
-  WITH DailyAggregates AS (
-    SELECT 
-      DATE("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') AS date,
-      COUNT(*)::int AS totalSurvey,
-      COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::int AS totalDijawab,
-      COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::int AS totalJawaban45
-    FROM "RawCsat"
-    WHERE "createdAt" >= (${endDate}::timestamp - INTERVAL '1 day')
-      AND "createdAt" < (${endDate}::timestamp)
-    GROUP BY DATE("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta')
-  )
   SELECT
-    date,
-    totalSurvey,
-    totalDijawab,
-    totalJawaban45,
+    COUNT(*)::int AS "totalSurvey",
+    COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::int AS "totalDijawab",
+    COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::int AS "totalJawaban45",
     CASE 
-      WHEN totalDijawab = 0 THEN 0
-      ELSE (totalJawaban45::float / totalDijawab::float) * 5
-    END AS scoreCsat,
+      WHEN COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END) = 0 THEN 0
+      ELSE (COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::float / COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::float) * 5
+    END AS "scorecsat",
     CASE 
-      WHEN totalDijawab = 0 THEN 0
-      ELSE (totalJawaban45::float / totalDijawab::float) * 100
-    END AS persenCsat
-  FROM DailyAggregates;
+      WHEN COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END) = 0 THEN 0
+      ELSE (COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::float / COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::float) * 100
+    END AS "persencsat"
+  FROM "RawCsat"
+  WHERE "createdAt" >= ${startDate}::timestamp
+    AND "createdAt" < ${endDate}::timestamp;
 `;
 
-    return csatScore;
+    // If the selected range has data, return it
+    if (csatScore[0]?.totalSurvey > 0) {
+      return csatScore;
+    }
+
+    // Fallback: find the most recent date with CSAT data before endDate
+    const fallbackDate = await this.prisma.$queryRaw<{ d: Date }[]>`
+      SELECT DATE("createdAt") AS d
+      FROM "RawCsat"
+      WHERE "createdAt" < ${endDate}::timestamp
+      GROUP BY DATE("createdAt")
+      ORDER BY d DESC
+      LIMIT 1;
+    `;
+
+    if (!fallbackDate[0]) return csatScore; // No data at all
+
+    const fallbackStart = fallbackDate[0].d;
+    const fallbackEnd = new Date(fallbackDate[0].d);
+    fallbackEnd.setDate(fallbackEnd.getDate() + 1);
+
+    const fallbackScore = await this.prisma.$queryRaw<any[]>`
+  SELECT
+    COUNT(*)::int AS "totalSurvey",
+    COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::int AS "totalDijawab",
+    COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::int AS "totalJawaban45",
+    CASE 
+      WHEN COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END) = 0 THEN 0
+      ELSE (COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::float / COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::float) * 5
+    END AS "scorecsat",
+    CASE 
+      WHEN COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END) = 0 THEN 0
+      ELSE (COUNT(CASE WHEN "numeric" >= 4 THEN 1 END)::float / COUNT(CASE WHEN "answeredAt" IS NOT NULL THEN 1 END)::float) * 100
+    END AS "persencsat"
+  FROM "RawCsat"
+  WHERE "createdAt" >= ${fallbackStart}::date
+    AND "createdAt" < ${fallbackEnd}::date;
+`;
+
+    return fallbackScore;
   }
 
   // ---------------------------------------------------------

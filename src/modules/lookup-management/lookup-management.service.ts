@@ -377,22 +377,110 @@ export class LookupManagementService {
     const limit = Number(query.limit || 25);
     const skip = (page - 1) * limit;
 
-    const where: Prisma.AccountMappingWhereInput = query.search
-      ? {
-          OR: [
-            { corporateName: { contains: query.search, mode: 'insensitive' } },
-            { b2b_account_id: { contains: query.search, mode: 'insensitive' } },
-            { namaAM: { contains: query.search, mode: 'insensitive' } },
-          ],
+    const where: Prisma.AccountMappingWhereInput = {};
+    if (query.search) {
+      where.OR = [
+        { corporateName: { contains: query.search, mode: 'insensitive' } },
+        { b2b_account_id: { contains: query.search, mode: 'insensitive' } },
+        { namaAM: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.filters) {
+      try {
+        const parsedFilters = JSON.parse(query.filters);
+        const andConditions: any[] = [];
+        const whitelist = ['b2b_account_id', 'corporateName', 'kategoriAccount', 'group', 'divisi', 'department', 'mppCodeNew', 'namaAM'];
+        for (const [key, value] of Object.entries(parsedFilters)) {
+          if (whitelist.includes(key) && value !== null && value !== undefined && value !== '') {
+            if (typeof value === 'boolean') {
+              andConditions.push({ [key]: value });
+            } else if (Array.isArray(value)) {
+              if (value.length > 0) {
+                andConditions.push({ [key]: { in: value } });
+              }
+            } else {
+              const tokens = String(value).trim().split(/\s+/).filter(Boolean);
+              if (tokens.length > 0) {
+                tokens.forEach((token) => {
+                  andConditions.push({ [key]: { contains: token, mode: 'insensitive' } });
+                });
+              }
+            }
+          }
         }
-      : {};
+        if (andConditions.length > 0) {
+          where.AND = andConditions;
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to parse filters for account-mapping: ${query.filters}`);
+      }
+    }
 
-    const [total, data] = await Promise.all([
+    const [total, data, uniqueCategories, uniqueGroups, uniqueDivisi, uniqueDept] = await Promise.all([
       this.prisma.accountMapping.count({ where }),
       this.prisma.accountMapping.findMany({ where, skip, take: limit, orderBy: { id: 'asc' } }),
+      this.prisma.accountMapping.findMany({
+        distinct: ['kategoriAccount'],
+        select: { kategoriAccount: true },
+        where: {
+          kategoriAccount: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { kategoriAccount: 'asc' },
+      }),
+      this.prisma.accountMapping.findMany({
+        distinct: ['group'],
+        select: { group: true },
+        where: {
+          group: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { group: 'asc' },
+      }),
+      this.prisma.accountMapping.findMany({
+        distinct: ['divisi'],
+        select: { divisi: true },
+        where: {
+          divisi: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { divisi: 'asc' },
+      }),
+      this.prisma.accountMapping.findMany({
+        distinct: ['department'],
+        select: { department: true },
+        where: {
+          department: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { department: 'asc' },
+      }),
     ]);
 
-    return { data, meta: { total, page, lastPage: Math.ceil(total / limit) } };
+    const filterOptions = {
+      kategoriAccount: uniqueCategories.map((c) => c.kategoriAccount).filter(Boolean),
+      group: uniqueGroups.map((g) => g.group).filter(Boolean),
+      divisi: uniqueDivisi.map((d) => d.divisi).filter(Boolean),
+      department: uniqueDept.map((dp) => dp.department).filter(Boolean),
+    };
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+        filterOptions,
+      },
+    };
   }
 
   async createAccountMapping(dto: CreateAccountMappingDto) {
@@ -424,24 +512,144 @@ export class LookupManagementService {
     const limit = Number(query.limit || 25);
     const skip = (page - 1) * limit;
 
-    const where: Prisma.LookupKIPWhereInput = query.search
-      ? {
-          OR: [
-            { category: { contains: query.search, mode: 'insensitive' } },
-            { subCategory: { contains: query.search, mode: 'insensitive' } },
-            { detailCategory: { contains: query.search, mode: 'insensitive' } },
-            { product: { contains: query.search, mode: 'insensitive' } },
-            { compositeKey: { contains: query.search, mode: 'insensitive' } },
-          ],
+    const where: Prisma.LookupKIPWhereInput = {};
+    if (query.search) {
+      where.OR = [
+        { category: { contains: query.search, mode: 'insensitive' } },
+        { subCategory: { contains: query.search, mode: 'insensitive' } },
+        { detailCategory: { contains: query.search, mode: 'insensitive' } },
+        { product: { contains: query.search, mode: 'insensitive' } },
+        { compositeKey: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.filters) {
+      try {
+        const parsedFilters = JSON.parse(query.filters);
+        const andConditions: any[] = [];
+        const whitelist = [
+          'category',
+          'subCategory',
+          'detailCategoryFull',
+          'detailCategory',
+          'detailCategory2',
+          'compositeKeyOmnix',
+          'compositeKey',
+          'fcrNonSatuan',
+          'escToSatuan',
+          'fcrNonMassal',
+          'escToMassal',
+          'isFcr',
+          'product',
+        ];
+        for (const [key, value] of Object.entries(parsedFilters)) {
+          if (whitelist.includes(key) && value !== null && value !== undefined && value !== '') {
+            if (typeof value === 'boolean') {
+              andConditions.push({ [key]: value });
+            } else if (key === 'isFcr') {
+              if (value === 'true' || value === '1') {
+                andConditions.push({ [key]: true });
+              } else if (value === 'false' || value === '0') {
+                andConditions.push({ [key]: false });
+              } else if (Array.isArray(value)) {
+                const mappedBools = value.map(v => v === 'true' || v === true);
+                if (mappedBools.length > 0) {
+                  andConditions.push({ [key]: { in: mappedBools } });
+                }
+              }
+            } else if (Array.isArray(value)) {
+              if (value.length > 0) {
+                andConditions.push({ [key]: { in: value } });
+              }
+            } else {
+              const tokens = String(value).trim().split(/\s+/).filter(Boolean);
+              if (tokens.length > 0) {
+                tokens.forEach((token) => {
+                  andConditions.push({ [key]: { contains: token, mode: 'insensitive' } });
+                });
+              }
+            }
+          }
         }
-      : {};
+        if (andConditions.length > 0) {
+          where.AND = andConditions;
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to parse filters for lookup-kip: ${query.filters}`);
+      }
+    }
 
-    const [total, data] = await Promise.all([
+    const [
+      total,
+      data,
+      uniqueCategories,
+      uniqueProducts,
+      uniqueEscToSatuan,
+      uniqueEscToMassal,
+    ] = await Promise.all([
       this.prisma.lookupKIP.count({ where }),
       this.prisma.lookupKIP.findMany({ where, skip, take: limit, orderBy: { id: 'asc' } }),
+      this.prisma.lookupKIP.findMany({
+        distinct: ['category'],
+        select: { category: true },
+        where: {
+          category: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { category: 'asc' },
+      }),
+      this.prisma.lookupKIP.findMany({
+        distinct: ['product'],
+        select: { product: true },
+        where: {
+          product: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { product: 'asc' },
+      }),
+      this.prisma.lookupKIP.findMany({
+        distinct: ['escToSatuan'],
+        select: { escToSatuan: true },
+        where: {
+          escToSatuan: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { escToSatuan: 'asc' },
+      }),
+      this.prisma.lookupKIP.findMany({
+        distinct: ['escToMassal'],
+        select: { escToMassal: true },
+        where: {
+          escToMassal: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { escToMassal: 'asc' },
+      }),
     ]);
 
-    return { data, meta: { total, page, lastPage: Math.ceil(total / limit) } };
+    const filterOptions = {
+      category: uniqueCategories.map((c) => c.category).filter(Boolean),
+      product: uniqueProducts.map((p) => p.product).filter(Boolean),
+      escToSatuan: uniqueEscToSatuan.map((s) => s.escToSatuan).filter(Boolean),
+      escToMassal: uniqueEscToMassal.map((m) => m.escToMassal).filter(Boolean),
+    };
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+        filterOptions,
+      },
+    };
   }
 
   async createLookupKIP(dto: CreateLookupKIPDto) {
@@ -473,21 +681,73 @@ export class LookupManagementService {
     const limit = Number(query.limit || 25);
     const skip = (page - 1) * limit;
 
-    const where: Prisma.LookupAgentWhereInput = query.search
-      ? {
-          OR: [
-            { namaAgent: { contains: query.search, mode: 'insensitive' } },
-            { group: { contains: query.search, mode: 'insensitive' } },
-          ],
+    const where: Prisma.LookupAgentWhereInput = {};
+    if (query.search) {
+      where.OR = [
+        { namaAgent: { contains: query.search, mode: 'insensitive' } },
+        { group: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.filters) {
+      try {
+        const parsedFilters = JSON.parse(query.filters);
+        const andConditions: any[] = [];
+        const whitelist = ['namaAgent', 'group'];
+        for (const [key, value] of Object.entries(parsedFilters)) {
+          if (whitelist.includes(key) && value !== null && value !== undefined && value !== '') {
+            if (typeof value === 'boolean') {
+              andConditions.push({ [key]: value });
+            } else if (Array.isArray(value)) {
+              if (value.length > 0) {
+                andConditions.push({ [key]: { in: value } });
+              }
+            } else {
+              const tokens = String(value).trim().split(/\s+/).filter(Boolean);
+              if (tokens.length > 0) {
+                tokens.forEach((token) => {
+                  andConditions.push({ [key]: { contains: token, mode: 'insensitive' } });
+                });
+              }
+            }
+          }
         }
-      : {};
+        if (andConditions.length > 0) {
+          where.AND = andConditions;
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to parse filters for lookup-agent: ${query.filters}`);
+      }
+    }
 
-    const [total, data] = await Promise.all([
+    const [total, data, uniqueGroups] = await Promise.all([
       this.prisma.lookupAgent.count({ where }),
       this.prisma.lookupAgent.findMany({ where, skip, take: limit, orderBy: { id: 'asc' } }),
+      this.prisma.lookupAgent.findMany({
+        distinct: ['group'],
+        select: { group: true },
+        where: {
+          group: {
+            not: null,
+            notIn: [''],
+          },
+        },
+        orderBy: { group: 'asc' },
+      }),
     ]);
 
-    return { data, meta: { total, page, lastPage: Math.ceil(total / limit) } };
+    const filterOptions = {
+      group: uniqueGroups.map((g) => g.group).filter(Boolean),
+    };
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+        filterOptions,
+      },
+    };
   }
 
   async createLookupAgent(dto: CreateLookupAgentDto) {

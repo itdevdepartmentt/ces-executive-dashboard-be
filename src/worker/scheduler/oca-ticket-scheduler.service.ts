@@ -30,9 +30,10 @@ export class OcaTicketSchedulerService {
     let lastJob = '';
 
     while (hasMore) {
-      // hasMore = false;
-      // 2. Hit the List API
-      const response = await axios.post(
+      try {
+        // hasMore = false;
+        // 2. Hit the List API
+        const response = await axios.post(
         'https://webapigw.ocatelkom.co.id/oca-interaction/ticketing/get-list',
         {
           agent_id: '621464b818b240212019132c',
@@ -109,6 +110,10 @@ export class OcaTicketSchedulerService {
         hasMore = false;
       } else {
         page++;
+      }
+      } catch (err: any) {
+        this.logger.error(`Failed to fetch OCA list API (page ${page}): ${err.message}`);
+        hasMore = false; // Stop loop gracefully on error
       }
     }
 

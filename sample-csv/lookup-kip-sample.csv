@@ -1,0 +1,11 @@
+category,subCategory,detailCategoryFull,detailCategory,detailCategory2,compositeKeyOmnix,compositeKey,fcrNonSatuan,escToSatuan,fcrNonMassal,escToMassal,isFcr,product
+Gangguan,Gangguan Internet,Gangguan Internet Lambat,Internet Lambat,Paket Data Habis,Gangguan|Gangguan Internet|Internet Lambat,Gangguan|Internet Lambat,Ya,Tidak,Ya,Tidak,true,CONNECTIVITY
+Gangguan,Gangguan Internet,Gangguan Internet Total Loss,Internet Total Loss,Kabel Putus,Gangguan|Gangguan Internet|Internet Total Loss,Gangguan|Internet Total Loss,Tidak,Ya,Tidak,Ya,false,CONNECTIVITY
+Gangguan,Gangguan Telepon,Gangguan Telepon Tidak Bisa Terima,Telepon Tidak Bisa Terima Panggilan,,Gangguan|Gangguan Telepon|Telepon Tidak Bisa Terima,Gangguan|Telepon Tidak Bisa Terima,Ya,Tidak,Ya,Tidak,true,SOLUTION
+Permintaan,Aktivasi Layanan,Aktivasi Internet Baru,Aktivasi Internet,Paket Bisnis,Permintaan|Aktivasi Layanan|Aktivasi Internet Baru,Permintaan|Aktivasi Internet,Ya,Tidak,Ya,Tidak,true,CONNECTIVITY
+Permintaan,Perubahan Data,Perubahan Alamat,Perubahan Alamat Tagihan,,Permintaan|Perubahan Data|Perubahan Alamat,Permintaan|Perubahan Alamat,Ya,Tidak,Tidak,Ya,true,SOLUTION
+Informasi,Informasi Tagihan,Informasi Tagihan Bulanan,Cek Tagihan,Detail Penggunaan,Informasi|Informasi Tagihan|Informasi Tagihan Bulanan,Informasi|Cek Tagihan,Ya,Tidak,Ya,Tidak,true,SOLUTION
+Informasi,Informasi Produk,Informasi Paket Internet,Paket Internet Bisnis,,Informasi|Informasi Produk|Informasi Paket Internet,Informasi|Paket Internet Bisnis,Ya,Tidak,Ya,Tidak,true,CONNECTIVITY
+Eskalasi,Eskalasi IT,Eskalasi Gangguan NOC,Eskalasi NOC,Incident P1,Eskalasi|Eskalasi IT|Eskalasi Gangguan NOC,Eskalasi|Eskalasi NOC,Tidak,Ya,Tidak,Ya,false,CONNECTIVITY
+Eskalasi,Eskalasi Billing,Eskalasi Dispute Tagihan,Dispute Tagihan,,Eskalasi|Eskalasi Billing|Eskalasi Dispute Tagihan,Eskalasi|Dispute Tagihan,Tidak,Ya,Tidak,Ya,false,SOLUTION
+Permintaan,Terminasi Layanan,Terminasi Internet,Cabut Internet,Relokasi,Permintaan|Terminasi Layanan|Terminasi Internet,Permintaan|Terminasi Internet,Tidak,Ya,Tidak,Ya,false,CONNECTIVITY

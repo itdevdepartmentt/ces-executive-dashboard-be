@@ -18,6 +18,7 @@ import { join } from 'path';
 import { NewsModule } from './modules/news/news.module';
 import { LookupManagementModule } from './modules/lookup-management/lookup-management.module';
 import { RawDownloadModule } from './modules/raw-download/raw-download.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -53,11 +54,10 @@ import { RawDownloadModule } from './modules/raw-download/raw-download.module';
         setHeaders: (res) => {
           // This tells the browser that this specific resource can be loaded by other origins
           res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-          // Optional: Helps with some modern browser "Isolation" security policies
-          res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL);
         },
       },
     }),
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

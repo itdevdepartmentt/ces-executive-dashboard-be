@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -286,6 +287,8 @@ model AccountMapping {
   @@unique([b2b_account_id, id])
   @@index([corporateName])
   @@index([kategoriAccount])
+  @@index([b2b_account_id])
+  @@index([group])
 }
 
 model OcaDailySync {
@@ -353,6 +356,9 @@ model News {
   content     Json      // TipTap JSON structure
   summary     String?   @db.Text
   authorName  String
+  category    String?
+  searchText  String?   @db.Text
+  status      String    @default("PUBLISHED")
   
   // Timestamps
   createdAt   DateTime  @default(now())

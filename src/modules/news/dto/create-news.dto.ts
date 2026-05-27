@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsObject } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsOptional } from 'class-validator';
 
 export class CreateNewsDto {
   @IsString()
@@ -11,11 +11,19 @@ export class CreateNewsDto {
   content: any;
 
   @IsString()
-  @IsNotEmpty()
   authorName: string;
 
   @IsString()
+  @IsNotEmpty()
   summary: string;
+
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
 }
 
 export class UpdateNewsDto extends PartialType(CreateNewsDto) {}

@@ -123,4 +123,7 @@ export class QueryLookupDto {
 
   @IsOptional() @IsString()
   search?: string;
+
+  @IsOptional() @IsString()
+  filters?: string;
 }

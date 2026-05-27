@@ -7,20 +7,25 @@ import { NestExpressApplication } from '@nestjs/platform-express'; // Import thi
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const frontendOrigins = (process.env.FRONTEND_URL ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          // Change this: Remove 'unsafe-inline'
           styleSrc: ["'self'"],
           fontSrc: ["'self'"],
-          imgSrc: ["'self'", 'data:'],
+          imgSrc: ["'self'", 'data:', 'blob:', ...frontendOrigins],
           scriptSrc: ["'self'"],
-          frameAncestors: ["'self'", process.env.FRONTEND_URL || ''],
+          frameAncestors: ["'self'", ...frontendOrigins],
         },
       },
+      // Ensure uploaded images can be embedded by frontend origin
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
       hsts: {
         maxAge: 31536000, // 1 year
         includeSubDomains: true,
@@ -30,7 +35,7 @@ async function bootstrap() {
   );
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: process.env.FRONTEND_URL?.split(','),
+    origin: frontendOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
