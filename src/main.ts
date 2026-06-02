@@ -6,7 +6,13 @@ import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express'; // Import this!
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: true,
+  });
+
+  // Increase body size limit to handle large news content (e.g. large tables)
+  app.use(require('express').json({ limit: '50mb' }));
+  app.use(require('express').urlencoded({ extended: true, limit: '50mb' }));
   const frontendOrigins = (process.env.FRONTEND_URL ?? '')
     .split(',')
     .map((origin) => origin.trim())
