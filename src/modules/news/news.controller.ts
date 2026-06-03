@@ -21,7 +21,8 @@ import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
 import { RolesGuard } from '../../common/guard/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { QueryNewsDto } from './dto/query-news.dto';
-import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
 const ALLOWED_UPDATE_EMAIL = 'qcnyaces@gmail.com';
 
