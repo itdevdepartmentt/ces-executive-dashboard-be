@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -20,6 +21,9 @@ import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
 import { RolesGuard } from '../../common/guard/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { QueryNewsDto } from './dto/query-news.dto';
+import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+
+const ALLOWED_UPDATE_EMAIL = 'qcnyaces@gmail.com';
 
 @Controller('news')
 export class NewsController {
@@ -89,7 +93,16 @@ export class NewsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  update(@Param('id') id: string, @Body() dto: UpdateNewsDto) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateNewsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    if (user.email !== ALLOWED_UPDATE_EMAIL) {
+      throw new ForbiddenException(
+        'Anda tidak memiliki izin untuk mengubah berita.',
+      );
+    }
     return this.newsService.update(id, dto);
   }
 
