@@ -19,11 +19,34 @@ import { NewsModule } from './modules/news/news.module';
 import { LookupManagementModule } from './modules/lookup-management/lookup-management.module';
 import { RawDownloadModule } from './modules/raw-download/raw-download.module';
 import { UsersModule } from './modules/users/users.module';
+import { SurveyModule } from './modules/survey/survey.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import Keyv from 'keyv';
+import { createKeyv } from '@keyv/redis';
 
 @Module({
   imports: [
     // 1. Enable Scheduling
     ScheduleModule.forRoot(),
+
+    // 2. Global Redis Cache (memanfaatkan REDIS_URL yang sudah ada)
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: () => {
+        const redisUrl = process.env.REDIS_URL;
+        if (redisUrl) {
+          return {
+            stores: [createKeyv(redisUrl)],
+            ttl: 60_000, // default TTL 60 detik (dalam ms)
+          };
+        }
+        // Fallback ke in-memory jika Redis tidak tersedia
+        return {
+          stores: [new Keyv()],
+          ttl: 60_000,
+        };
+      },
+    }),
 
     BullModule.forRoot({
       connection: process.env.REDIS_URL
@@ -58,6 +81,7 @@ import { UsersModule } from './modules/users/users.module';
       },
     }),
     UsersModule,
+    SurveyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

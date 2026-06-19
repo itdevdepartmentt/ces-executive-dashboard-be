@@ -359,6 +359,7 @@ model News {
   category    String?
   searchText  String?   @db.Text
   status      String    @default("PUBLISHED")
+  viewCount   Int       @default(0)
   
   // Timestamps
   createdAt   DateTime  @default(now())
@@ -396,6 +397,33 @@ model LookupAgent {
   group           String?
 
   @@map("lookup_agent")
+}
+
+model SurveyField {
+  id        Int      @id @default(autoincrement())
+  label     String
+  type      String   // RATING, NPS, TEXT, SELECT
+  options   Json?    // For SELECT type: ["option1", "option2", ...]
+  isRequired Boolean @default(true)
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  dependsOnFieldId Int?
+  dependsOnValue   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("survey_field")
+}
+
+model SurveyResponse {
+  id              Int      @id @default(autoincrement())
+  ticketId        String?  @unique @map("ticket_id")
+  agentName       String?  @map("agent_name")
+  generatedAt     DateTime? @map("generated_at")
+  answers         Json     // { fieldId: value, ... }
+  createdAt       DateTime @default(now())
+
+  @@map("survey_response")
 }
 
 enum UserRole {

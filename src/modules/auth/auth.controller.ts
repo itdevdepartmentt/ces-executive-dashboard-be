@@ -20,6 +20,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    console.log("Login attempt:", dto);
     const { token, user } = await this.auth.login(dto);
 
     res.cookie('access_token', token, {

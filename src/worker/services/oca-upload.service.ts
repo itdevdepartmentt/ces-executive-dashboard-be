@@ -145,22 +145,14 @@ export class OcaUploadService {
 
       let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
-      if (!derivedProduct && /TC|Engineer/i.test(agentMap.get(row['Assignee'].trim().toLowerCase()) || '')) {
-        this.logger.debug(`Applying fallback product logic for Ticket ${row['Ticket Number']} due to missing KIP mapping`);
-        derivedProduct = 'SOLUTION';
-        fcrStatus = true;
-      //                          if (row['Ticket Number'] === 'TICKET-2228486') {
-      //   this.logger.debug(`Debugging Ticket TICKET-2228486: masuk ke fallback product logic karena tidak ditemukan di KIP Map`);
-      // }
-      //   if(/iot/i.test(row['Sub Category']) &&
-      //   /ENGINEER|TECHNICAL TEAM/i.test(row['Department'])) {
-      //     derivedProduct = 'SOLUTION';
-      //     // fcrStatus = false;
-      //   } else {
-      //     derivedProduct = 'CONNECTIVITY';
-      //     fcrStatus = true;
-      //   }
-
+      if (!derivedProduct) {
+        if (/TC|Engineer/i.test(agentMap.get(row['Assignee'].trim().toLowerCase()) || '')) {
+          this.logger.debug(`Applying fallback product logic for Ticket ${row['Ticket Number']} due to missing KIP mapping`);
+          derivedProduct = 'SOLUTION';
+          fcrStatus = true;
+        } else {
+          derivedProduct = 'CONNECTIVITY';
+        }
       }
 
       const channel = determineChannel(

@@ -113,14 +113,15 @@ export class DailyOcaTicketProcessor extends WorkerHost {
 
         let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
-        if (
-          !derivedProduct &&
-          /TC|Engineer/i.test(
+        if (!derivedProduct) {
+          if (/TC|Engineer/i.test(
             agentMap.get(mappedData.assignee?.trim().toLowerCase()) || '',
-          )
-        ) {
-          derivedProduct = 'SOLUTION';
-          fcrStatus = true;
+          )) {
+            derivedProduct = 'SOLUTION';
+            fcrStatus = true;
+          } else {
+            derivedProduct = 'CONNECTIVITY';
+          }
         }
 
         const channel = determineChannel(mappedData, agentMap);

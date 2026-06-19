@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateNewsDto, UpdateNewsDto } from './dto/create-news.dto';
 import { QueryNewsDto } from './dto/query-news.dto';
@@ -6,8 +8,33 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class NewsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
+  // ─── Cache key helpers ───────────────────────────────────────────────────────
+  private listCacheKey(query: QueryNewsDto): string {
+    return `news:list:${JSON.stringify(query)}`;
+  }
+
+  private detailCacheKey(id: string): string {
+    return `news:detail:${id}`;
+  }
+
+  // Track list cache keys agar bisa diinvalidasi satu per satu
+  private listCacheKeys = new Set<string>();
+
+  /** Invalidasi semua cache list news */
+  private async invalidateListCache(): Promise<void> {
+    const deletePromises = [...this.listCacheKeys].map((key) =>
+      this.cacheManager.del(key),
+    );
+    await Promise.all(deletePromises);
+    this.listCacheKeys.clear();
+  }
+
+  // ─── Text extraction helpers ─────────────────────────────────────────────────
   private extractPlainText(content: any): string {
     if (!content) return '';
 
@@ -127,6 +154,8 @@ export class NewsService {
     return allPdfTexts.trim();
   }
 
+  // ─── CRUD ────────────────────────────────────────────────────────────────────
+
   async create(dto: CreateNewsDto) {
     const pdfTexts = await this.extractPdfTexts(dto.content);
     const searchText = [
@@ -138,21 +167,28 @@ export class NewsService {
       .filter(Boolean)
       .join(' ');
 
-    return this.prisma.news.create({
-      data: {
-        ...dto,
-        searchText,
-      },
+    const news = await this.prisma.news.create({
+      data: { ...dto, searchText },
     });
+
+    // Invalidasi semua cache list setelah create
+    await this.invalidateListCache();
+
+    return news;
   }
 
   async findAll(query: QueryNewsDto) {
-    const { search, category, status } = query;
+    const cacheKey = this.listCacheKey(query);
 
+    // Cek cache terlebih dahulu
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const { search, category, status } = query;
     const page = Number(query.page || 1);
     const limit = Number(query.limit || 10);
-
-    // Calculate how many records to skip
     const skip = (page - 1) * limit;
 
     const categoryFilter = category
@@ -163,7 +199,6 @@ export class NewsService {
       ? { status: { equals: status, mode: Prisma.QueryMode.insensitive } }
       : {};
 
-    // Build the tokenized search filter
     let searchFilter: Prisma.NewsWhereInput = {};
     if (search && search.trim()) {
       const terms = search.trim().split(/\s+/).filter(Boolean);
@@ -198,7 +233,7 @@ export class NewsService {
       }),
     ]);
 
-    return {
+    const result = {
       data,
       meta: {
         total,
@@ -206,17 +241,55 @@ export class NewsService {
         lastPage: Math.ceil(total / limit),
       },
     };
+
+    // Simpan ke cache selama 60 detik
+    await this.cacheManager.set(cacheKey, result, 60_000);
+    this.listCacheKeys.add(cacheKey);
+
+    return result;
   }
+
   async findOne(id: string) {
+    const cacheKey = this.detailCacheKey(id);
+
+    // Cek cache terlebih dahulu
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const news = await this.prisma.news.findFirst({
       where: { id, deletedAt: null },
     });
     if (!news) throw new NotFoundException('News article not found');
+
+    // Simpan ke cache selama 2 menit
+    await this.cacheManager.set(cacheKey, news, 2 * 60_000);
+
     return news;
   }
 
+  async incrementView(id: string) {
+    // Increment the view count atomically, ignore if article doesn't exist
+    try {
+      await this.prisma.news.update({
+        where: { id },
+        data: { viewCount: { increment: 1 } },
+      });
+      // Invalidasi cache detail agar viewCount terbaru tampil
+      await this.cacheManager.del(this.detailCacheKey(id));
+    } catch (e) {
+      // Article may not exist, silently ignore
+    }
+    return { ok: true };
+  }
+
   async update(id: string, dto: UpdateNewsDto) {
-    const existingNews = await this.findOne(id); // Ensure it exists and isn't deleted
+    const existingNews = await this.prisma.news.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existingNews) throw new NotFoundException('News article not found');
+
     const contentToParse = dto.content ?? existingNews.content;
     const pdfTexts = await this.extractPdfTexts(contentToParse);
     const searchText = [
@@ -228,20 +301,29 @@ export class NewsService {
       .filter(Boolean)
       .join(' ');
 
-    return this.prisma.news.update({
+    const updated = await this.prisma.news.update({
       where: { id },
-      data: {
-        ...dto,
-        searchText,
-      },
+      data: { ...dto, searchText },
     });
+
+    // Invalidasi cache detail dan semua list
+    await this.cacheManager.del(this.detailCacheKey(id));
+    await this.invalidateListCache();
+
+    return updated;
   }
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.news.update({
+    const removed = await this.prisma.news.update({
       where: { id },
       data: { deletedAt: new Date() }, // Soft delete
     });
+
+    // Invalidasi cache detail dan semua list
+    await this.cacheManager.del(this.detailCacheKey(id));
+    await this.invalidateListCache();
+
+    return removed;
   }
 }

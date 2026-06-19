@@ -59,7 +59,10 @@ export class CallUploadService {
             .toLowerCase();
         // const fcrStatus = fcrMap.get(compositeFcrKey) || false;
 
-        const derivedProduct = kipMap.get(compositeFcrKey || '-');
+        let derivedProduct = kipMap.get(compositeFcrKey || '-');
+        if (!derivedProduct) {
+          derivedProduct = 'CONNECTIVITY';
+        }
 
         const rowData = {
           kipId: row.getCell(1).text,

@@ -214,15 +214,16 @@ export class OmnixUploadService {
           .toLowerCase();
         const agentGroup = agentMap.get(agentName) || '';
 
-        if (
-          !derivedProduct &&
-          /TC|Engineer/i.test(agentGroup)
-        ) {
-          this.logger.debug(
-            `Applying fallback product logic for Omnix Ticket ${col(H.ticketId).text} due to missing KIP mapping`,
-          );
-          derivedProduct = 'SOLUTION';
-          fcrStatus = true;
+        if (!derivedProduct) {
+          if (/TC|Engineer/i.test(agentGroup)) {
+            this.logger.debug(
+              `Applying fallback product logic for Omnix Ticket ${col(H.ticketId).text} due to missing KIP mapping`,
+            );
+            derivedProduct = 'SOLUTION';
+            fcrStatus = true;
+          } else {
+            derivedProduct = 'CONNECTIVITY';
+          }
         }
 
         const channel = this.determineChannel(row, col, H);

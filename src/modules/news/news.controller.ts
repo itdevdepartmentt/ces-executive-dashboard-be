@@ -76,7 +76,8 @@ export class NewsController {
     if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
       try {
         const fs = require('fs');
-        const pdfParse = require('pdf-parse');
+        const pdfLib = require('pdf-parse');
+        const pdfParse = pdfLib.default || pdfLib;
         const dataBuffer = fs.readFileSync(file.path);
         const pdfData = await pdfParse(dataBuffer);
         extractedText = pdfData.text || '';
@@ -89,6 +90,11 @@ export class NewsController {
       name: file.originalname,
       extractedText,
     };
+  }
+
+  @Patch(':id/view')
+  incrementView(@Param('id') id: string) {
+    return this.newsService.incrementView(id);
   }
 
   @Patch(':id')
