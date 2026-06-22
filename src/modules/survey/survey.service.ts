@@ -1,4 +1,5 @@
 import { Injectable, ConflictException } from '@nestjs/common';
+import translate from 'google-translate-api-x';
 import { PrismaService } from 'prisma/prisma.service';
 import { CreateSurveyFieldDto } from './dto/create-survey-field.dto';
 import { UpdateSurveyFieldDto } from './dto/update-survey-field.dto';
@@ -43,12 +44,38 @@ export class SurveyService {
     };
   }
 
+  private async translateText(text: string): Promise<string> {
+    try {
+      if (!text) return '';
+      const res = await translate(text, { to: 'en' });
+      return res.text || '';
+    } catch (e) {
+      console.error('Translation error:', e);
+      return '';
+    }
+  }
+
   async createField(dto: CreateSurveyFieldDto) {
+    let finalLabel = dto.label;
+    if (dto.label && !dto.label.includes('\n')) {
+      const enLabel = await this.translateText(dto.label);
+      if (enLabel) finalLabel = `${dto.label}\n${enLabel}`;
+    }
+
+    let finalOptions = dto.options || null;
+    if (Array.isArray(dto.options)) {
+      finalOptions = await Promise.all(dto.options.map(async (opt: string) => {
+        if (opt.match(/\(.*?\)$/)) return opt;
+        const enOpt = await this.translateText(opt);
+        return enOpt ? `${opt} (${enOpt})` : opt;
+      }));
+    }
+
     return this.prisma.surveyField.create({
       data: {
-        label: dto.label,
+        label: finalLabel,
         type: dto.type,
-        options: dto.options || null,
+        options: finalOptions,
         isRequired: dto.isRequired ?? true,
         order: dto.order ?? 0,
         isActive: dto.isActive ?? true,
@@ -59,12 +86,27 @@ export class SurveyService {
   }
 
   async updateField(id: number, dto: UpdateSurveyFieldDto) {
+    let finalLabel = dto.label;
+    if (dto.label && !dto.label.includes('\n')) {
+      const enLabel = await this.translateText(dto.label);
+      if (enLabel) finalLabel = `${dto.label}\n${enLabel}`;
+    }
+
+    let finalOptions = dto.options;
+    if (Array.isArray(dto.options)) {
+      finalOptions = await Promise.all(dto.options.map(async (opt: string) => {
+        if (opt.match(/\(.*?\)$/)) return opt;
+        const enOpt = await this.translateText(opt);
+        return enOpt ? `${opt} (${enOpt})` : opt;
+      }));
+    }
+
     return this.prisma.surveyField.update({
       where: { id },
       data: {
-        label: dto.label,
+        label: finalLabel,
         type: dto.type,
-        options: dto.options,
+        options: finalOptions,
         isRequired: dto.isRequired,
         order: dto.order,
         isActive: dto.isActive,
