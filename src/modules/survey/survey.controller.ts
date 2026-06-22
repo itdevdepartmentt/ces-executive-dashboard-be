@@ -79,7 +79,7 @@ export class SurveyController {
 
   @Get('admin/responses/download')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'USER')
+  @Roles('ADMIN')
   downloadResponses(@Res() res: Response) {
     return this.service.downloadResponses(res);
   }
