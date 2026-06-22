@@ -37,14 +37,14 @@ export class SurveyController {
   // ─── Admin Endpoints (Auth + ADMIN Role) ───
   @Post('admin/generate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'USER')
   generateLink(@Body() body: { ticketId: string }) {
     // Force reload
     return this.service.generateLink(body.ticketId);
   }
   @Get('admin/fields')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'USER')
   getAllFields(@Query() query: QuerySurveyDto) {
     return this.service.getAllFields(query);
   }
@@ -72,14 +72,14 @@ export class SurveyController {
 
   @Get('admin/responses')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'USER')
   getResponses(@Query() query: QuerySurveyDto) {
     return this.service.getResponses(query);
   }
 
   @Get('admin/responses/download')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'USER')
   downloadResponses(@Res() res: Response) {
     return this.service.downloadResponses(res);
   }
