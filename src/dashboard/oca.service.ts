@@ -76,12 +76,14 @@ export class OcaService {
     //   GROUP BY "channel"
     // `;
 
+    const isFcrColOca = filter.fcrType === 'realisasi' ? Prisma.sql`"isFcrRealisasi"` : Prisma.sql`"isFcr"`;
+
     const stats = await this.prisma.$queryRaw<any[]>`
     WITH "UnifiedData" AS (
       -- 1. DATA FROM OCA (Your existing structure)
       SELECT 
         "channel", "statusTiket", "inSla", "last_status", "product", 
-        "resolve_time", "ticket_created", "isFcr", "isPareto",
+        "resolve_time", "ticket_created", ${isFcrColOca} as "isFcr", "isPareto",
         'OCA' as "source_origin" -- Tagging the source just in case
       FROM "RawOca"
       WHERE "ticket_created" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
@@ -97,7 +99,7 @@ export class OcaService {
         "product",                                 -- MAP: Hardcode if Omnix doesn't have product types
         "date_close" as "resolve_time",             -- MAP: Omnix timestamp -> Standard Name
         "date_start_interaction" as "ticket_created",       -- MAP: Omnix timestamp -> Standard Name
-        "isFcr",                                    -- MAP: Omnix column -> Standard Name
+        ${isFcrColOca} as "isFcr",                                    -- MAP: Omnix column -> Standard Name
         "isPareto",                                    -- MAP: Default to false if Omnix lacks this
         'OMNIX' as "source_origin"
       FROM "RawOmnix"
@@ -113,19 +115,19 @@ export class OcaService {
         -- % SLA (Logic reused exactly as is!)
         CASE WHEN COUNT(*) FILTER (WHERE "statusTiket" = true) > 0 
              THEN ROUND((COUNT(*) FILTER (WHERE "inSla")::decimal / NULLIF(COUNT(*) FILTER (WHERE "statusTiket" = true),0)) * 100, 2)
-             ELSE 0 END as "pctSla",
+             ELSE 100 END as "pctSla",
 
         -- Basic Counts
         COUNT(*) FILTER (WHERE "last_status" = 'Open')::int as "open",
         COUNT(*) FILTER (WHERE "last_status" = 'Closed')::int as "closed",
 
         -- Product Specifics
-        COUNT(*) FILTER (WHERE "last_status" = 'Open' AND "product" = 'connectivity')::int as "connOpen",
-        COUNT(*) FILTER (WHERE "last_status" = 'Open' AND "product" = 'solution')::int as "solOpen",
+        COUNT(*) FILTER (WHERE "last_status" = 'Open' AND UPPER("product") = 'CONNECTIVITY')::int as "connOpen",
+        COUNT(*) FILTER (WHERE "last_status" = 'Open' AND UPPER("product") = 'SOLUTION')::int as "solOpen",
         
         -- Resolve Time Logic
-        COUNT(*) FILTER (WHERE "product" = 'connectivity' AND ("resolve_time" - "ticket_created") > interval '3 hours')::int as "connOver3h",
-        COUNT(*) FILTER (WHERE "product" = 'solution' AND ("resolve_time" - "ticket_created") > interval '6 hours')::int as "solOver6h",
+        COUNT(*) FILTER (WHERE UPPER("product") = 'CONNECTIVITY' AND ("resolve_time" - "ticket_created") > interval '3 hours')::int as "connOver3h",
+        COUNT(*) FILTER (WHERE UPPER("product") = 'SOLUTION' AND ("resolve_time" - "ticket_created") > interval '6 hours')::int as "solOver6h",
 
         -- FCR Stats
         COUNT(*) FILTER (WHERE NOT "isFcr")::int as "nonFcrCount",

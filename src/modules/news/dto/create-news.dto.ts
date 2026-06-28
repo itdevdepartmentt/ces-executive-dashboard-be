@@ -24,6 +24,10 @@ export class CreateNewsDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @IsString()
+  @IsOptional()
+  authorId?: string;
 }
 
 export class UpdateNewsDto extends PartialType(CreateNewsDto) {}

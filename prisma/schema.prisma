@@ -15,6 +15,14 @@ model User {
   passwordHash String
   role         UserRole @default(USER)
   createdAt    DateTime @default(now())
+
+  // Relations
+  newsArticles       News[]
+  comments           NewsComment[]
+  commentLikes       NewsCommentLike[]
+  actorActivities    NewsActivity[] @relation("ActivityActor")
+  receivedActivities NewsActivity[] @relation("ActivityRecipient")
+  bookmarks          NewsBookmark[]
 }
 
 model RawCsat {
@@ -142,6 +150,7 @@ model RawOmnix {
   eskalasi                     String?
   inSla                        Boolean?
   isFcr                        Boolean?
+  isFcrRealisasi               Boolean?
   isPareto                     Boolean?
   isVip                        Boolean?
   product                      String?
@@ -182,6 +191,7 @@ model RawCall {
   eskalasi                     String?
   inSla                        Boolean?
   isFcr                        Boolean?
+  isFcrRealisasi               Boolean?
   isPareto                     Boolean?
   isVip                        Boolean?
   product                      String?
@@ -250,6 +260,8 @@ model RawOca {
   isVip                   Boolean?
   inSla                   Boolean?
   isFcr                   Boolean?
+  isFcrRealisasi          Boolean?
+  eskalasiRealisasiTarget String?   @map("eskalasi_realisasi_target")
 
   @@index([ticketNumber])
   @@index([ticketCreated])
@@ -356,6 +368,8 @@ model News {
   content     Json      // TipTap JSON structure
   summary     String?   @db.Text
   authorName  String
+  authorId    String?   @map("author_id")
+  author      User?     @relation(fields: [authorId], references: [id])
   category    String?
   searchText  String?   @db.Text
   status      String    @default("PUBLISHED")
@@ -366,7 +380,80 @@ model News {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime? // For Soft Delete
 
+  // Relations
+  comments    NewsComment[]
+  activities  NewsActivity[]
+  bookmarks   NewsBookmark[]
+
   @@index([deletedAt])
+  @@index([authorId])
+}
+
+model NewsComment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  newsId    String   @map("news_id")
+  news      News     @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?  @map("parent_id")
+  parent    NewsComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   NewsComment[]  @relation("CommentReplies")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities NewsActivity[]
+  likes      NewsCommentLike[]
+
+  @@index([newsId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("news_comment")
+}
+
+model NewsCommentLike {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String   @map("comment_id")
+  comment   NewsComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("news_comment_like")
+}
+
+model NewsActivity {
+  id          String       @id @default(cuid())
+  type        String       // 'COMMENT' (extendable: 'LIKE', 'MENTION', etc.)
+  newsId      String       @map("news_id")
+  news        News         @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  actorId     String       @map("actor_id")
+  actor       User         @relation("ActivityActor", fields: [actorId], references: [id])
+  recipientId String       @map("recipient_id")
+  recipient   User         @relation("ActivityRecipient", fields: [recipientId], references: [id])
+  commentId   String?      @map("comment_id")
+  comment     NewsComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  isRead      Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  @@index([recipientId, isRead])
+  @@index([newsId])
+  @@map("news_activity")
+}
+
+model NewsBookmark {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  newsId    String   @map("news_id")
+  news      News     @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, newsId])
+  @@index([newsId])
+  @@map("news_bookmark")
 }
 
 model LookupKIP {

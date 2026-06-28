@@ -246,6 +246,8 @@ export class OmnixUploadService {
           'Eskalasi/ID Remedy_IT/AO/EMS': col(H.ticketITAO).text,
         });
 
+        const fcrRealisasi = (!typeEskalasi || typeEskalasi === '-') ? true : false;
+
         // Helper to safely parse Integers (returns null if empty or invalid)
         const parseIntSafe = (value: any) => {
           const parsed = parseInt(value);
@@ -410,6 +412,7 @@ export class OmnixUploadService {
           product: derivedProduct?.toUpperCase() || '-',
           inSla: slaStatus,
           isFcr: fcrStatus,
+          isFcrRealisasi: fcrRealisasi,
           eskalasi: typeEskalasi,
           isPareto: derivedAccountCategory === 'P1' ? true : false,
           isVip: isVip,
@@ -565,6 +568,7 @@ export class OmnixUploadService {
         ${ExcelUtils.formatSqlValue(row.product)},
         ${ExcelUtils.formatSqlValue(row.inSla)},
         ${ExcelUtils.formatSqlValue(row.isFcr)},
+        ${ExcelUtils.formatSqlValue(row.isFcrRealisasi)},
         ${ExcelUtils.formatSqlValue(row.eskalasi)},
         ${ExcelUtils.formatSqlValue(row.isVip)},
         ${ExcelUtils.formatSqlValue(row.isPareto)}
@@ -599,7 +603,7 @@ export class OmnixUploadService {
           "date_eskalasi_ebo", "date_eskalasi_it", "date_eskalasi_no", "date_eskalasi_partner",
           "date_menunggu_approval_billco",
           "customer_instagram_id", "customer_phone", "customer_facebook_id",
-          "validationStatus", "statusTiket", "product","inSla", "isFcr", "eskalasi", "isVip", "isPareto"
+          "validationStatus", "statusTiket", "product","inSla", "isFcr", "isFcrRealisasi", "eskalasi", "isVip", "isPareto"
       )
       VALUES ${values}
       ON CONFLICT ("ticket_id") 
@@ -696,6 +700,7 @@ export class OmnixUploadService {
           "product" = EXCLUDED."product",
           "inSla" = EXCLUDED."inSla",
           "isFcr" = EXCLUDED."isFcr",
+          "isFcrRealisasi" = EXCLUDED."isFcrRealisasi",
           "eskalasi" = EXCLUDED."eskalasi",
           "isVip" = EXCLUDED."isVip",
           "isPareto" = EXCLUDED."isPareto";

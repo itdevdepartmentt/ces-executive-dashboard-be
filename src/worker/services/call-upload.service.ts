@@ -94,6 +94,7 @@ export class CallUploadService {
           product: derivedProduct?.toUpperCase() || '-',
           sla: true,
           fcr: true,
+          isFcrRealisasi: true,
           eskalasi: '-',
           isPareto: derivedAccountCategory === 'P1' ? true : false,
           isVip: false,
@@ -165,6 +166,7 @@ export class CallUploadService {
         ${ExcelUtils.formatSqlValue(row.product)},
         ${ExcelUtils.formatSqlValue(row.sla)},
         ${ExcelUtils.formatSqlValue(row.fcr)},
+        ${ExcelUtils.formatSqlValue(row.isFcrRealisasi)},
         ${ExcelUtils.formatSqlValue(row.eskalasi)},
         ${ExcelUtils.formatSqlValue(row.isPareto)},
         ${ExcelUtils.formatSqlValue(row.isVip)}
@@ -181,7 +183,7 @@ export class CallUploadService {
         "topic_result", "service", "app_id", "user_id",
         "employee_code", "employee_name", "notes", "corp", "project_id",
         "tier", "customer_type", "validationStatus", "statusTiket",
-        "product", "inSla", "isFcr", "eskalasi", "isPareto", "isVip"
+        "product", "inSla", "isFcr", "isFcrRealisasi", "eskalasi", "isPareto", "isVip"
         )
         VALUES ${values}
         ON CONFLICT ("kip_id")
@@ -210,6 +212,7 @@ export class CallUploadService {
         "product"         = EXCLUDED."product",
         "inSla"           = EXCLUDED."inSla",
         "isFcr"           = EXCLUDED."isFcr",
+        "isFcrRealisasi"  = EXCLUDED."isFcrRealisasi",
         "eskalasi"        = EXCLUDED."eskalasi",
         "isPareto"        = EXCLUDED."isPareto",
         "isVip"           = EXCLUDED."isVip";

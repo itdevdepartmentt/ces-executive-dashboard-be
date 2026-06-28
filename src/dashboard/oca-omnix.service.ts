@@ -8,6 +8,7 @@ export class OcaOmnixService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getExecutiveSummary(filter: DashboardFilterDto) {
+    const isFcrColOca = filter.fcrType === 'realisasi' ? '"isFcrRealisasi"' : '"isFcr"';
     // 1. DEFINE CTE (Reusable "Virtual Table")
     // We normalize the timestamp to "ticket_timestamp" for easier filtering
     const unifiedCte = `
@@ -16,7 +17,7 @@ export class OcaOmnixService {
                 "last_status", 
                 "statusTiket", 
                 "inSla",
-              "isFcr",
+                ${isFcrColOca} as "isFcr",
                 "ticket_created" as "ticket_timestamp",
                 "channel"
             FROM "RawOca"
@@ -29,7 +30,7 @@ export class OcaOmnixService {
                 "ticket_status_name" as "last_status", 
                 "statusTiket", 
                 "inSla",
-              "isFcr",
+                ${isFcrColOca} as "isFcr",
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
             FROM "RawOmnix"
@@ -39,7 +40,7 @@ export class OcaOmnixService {
                 'closed' as "last_status",
                 "statusTiket",
                 "inSla",
-              "isFcr",
+                ${isFcrColOca} as "isFcr",
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
             FROM "RawCall"
@@ -372,12 +373,13 @@ ORDER BY 1 ASC;
   // 2. CHANNEL BREAKDOWN (The Complex Pivot)
   // ---------------------------------------------------------
   async getChannelStats(filter: DashboardFilterDto) {
+    const isFcrColOca = filter.fcrType === 'realisasi' ? Prisma.sql`"isFcrRealisasi"` : Prisma.sql`"isFcr"`;
     const stats = await this.prisma.$queryRaw<any[]>`
     WITH "UnifiedData" AS (
       -- 1. DATA FROM OCA (Your existing structure)
       SELECT 
         "channel", "statusTiket", "inSla", "last_status", "product", 
-        "resolve_time", "ticket_created", "isFcr", "isPareto",
+        "resolve_time", "ticket_created", ${isFcrColOca} as "isFcr", "isPareto",
         'OCA' as "source_origin", -- Tagging the source just in case
         'OCA' as "source_kip" 
       FROM "RawOca"
@@ -394,7 +396,7 @@ ORDER BY 1 ASC;
         "product",                                 -- MAP: Hardcode if Omnix doesn't have product types
         "date_close" as "resolve_time",             -- MAP: Omnix timestamp -> Standard Name
         "date_start_interaction" as "ticket_created",       -- MAP: Omnix timestamp -> Standard Name
-        "isFcr",                                    -- MAP: Omnix column -> Standard Name
+        ${isFcrColOca} as "isFcr",                                    -- MAP: Omnix column -> Standard Name
         "isPareto",                                    -- MAP: Default to false if Omnix lacks this
         'OMNIX' as "source_origin",
         'OMNIX' as "source_kip"
@@ -410,7 +412,7 @@ ORDER BY 1 ASC;
         "product",
         NULL::timestamp as "resolve_time",
         "update_stamp" as "ticket_created",
-        "isFcr",
+        ${isFcrColOca} as "isFcr",
         "isPareto",
         'OCA' as "source_origin",
         'CALL' as "source_kip"
@@ -427,7 +429,7 @@ ORDER BY 1 ASC;
         -- % SLA (Logic reused exactly as is!)
         CASE WHEN COUNT(*) FILTER (WHERE "statusTiket" = true) > 0 
              THEN ROUND((COUNT(*) FILTER (WHERE "inSla" AND "statusTiket")::decimal / NULLIF(COUNT(*) FILTER (WHERE "statusTiket" = true),0)) * 100, 2)
-             ELSE 0 END as "pctSla",
+             ELSE 100 END as "pctSla",
 
         -- Basic Counts
         COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') AND "statusTiket" = true)::int as "open",
@@ -577,6 +579,8 @@ ORDER BY 1 ASC;
       }
     }
 
+    const isFcrColOca = filter.fcrType === 'realisasi' ? '"isFcrRealisasi"' : '"isFcr"';
+
     // 2. RUN QUERY
     // We use ${channelColumn} in the WHERE clause instead of hardcoding "channel"
     // const result = await this.prisma.$queryRawUnsafe<any[]>(
@@ -589,12 +593,6 @@ ORDER BY 1 ASC;
     //       AND ${dateColumn} BETWEEN $2::timestamp AND $3::timestamp
     //     GROUP BY ${metricColumn}
     //     ORDER BY total DESC
-    //     LIMIT 5
-    //   `,
-    //   channel,
-    //   filter.startDate,
-    //   filter.endDate,
-    // );
     const result = await this.prisma.$queryRawUnsafe<any[]>(
     `
     WITH "UnifiedDetail" AS (
@@ -604,7 +602,7 @@ ORDER BY 1 ASC;
         ${metricType === 'nama_perusahaan' ? '"nama_perusahaan"' : '"detail_category"'} as "metric_name",
         "ticket_created" as "date_ref",
         "eskalasi",
-        "isFcr",
+        ${isFcrColOca} as "isFcr",
         "statusTiket"
       FROM "RawOca"
       WHERE "channel" = $1
@@ -617,7 +615,7 @@ ORDER BY 1 ASC;
         ${metricType === 'nama_perusahaan' ? '"corp"' : '"topic_reason_2"'} as "metric_name",
         "update_stamp" as "date_ref",
         "eskalasi", -- Fallback for missing column
-        "isFcr",
+        ${isFcrColOca} as "isFcr",
         "statusTiket"
       FROM "RawCall"
       WHERE 'callcenter' = $1
@@ -630,7 +628,7 @@ ORDER BY 1 ASC;
         ${metricType === 'nama_perusahaan' ? '"ticket_perusahaan"' : '"subCategory"'} as "metric_name",
         "date_start_interaction" as "date_ref",
         "eskalasi",
-        "isFcr",
+        ${isFcrColOca} as "isFcr",
         "statusTiket"
       FROM "RawOmnix"
       WHERE "channel_name" = $1

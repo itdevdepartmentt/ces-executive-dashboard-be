@@ -45,8 +45,11 @@ export class NewsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  create(@Body() dto: CreateNewsDto) {
-    return this.newsService.create(dto);
+  create(
+    @Body() dto: CreateNewsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.newsService.create({ ...dto, authorId: user.id });
   }
 
   @Post('upload')
@@ -118,5 +121,25 @@ export class NewsController {
   @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.newsService.remove(id);
+  }
+
+  // ─── BOOKMARKS ───────────────────────────────────────────────────────────────
+
+  @Post(':id/bookmark')
+  @UseGuards(JwtAuthGuard)
+  toggleBookmark(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.newsService.toggleBookmark(id, user.id);
+  }
+
+  @Get(':id/bookmark/status')
+  @UseGuards(JwtAuthGuard)
+  getBookmarkStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.newsService.getBookmarkStatus(id, user.id);
   }
 }

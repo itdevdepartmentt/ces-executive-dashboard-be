@@ -7,6 +7,7 @@ import csv from 'csv-parser';
 import * as fs from 'fs';
 import { ExcelUtils } from '../excel-utils.helper';
 import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
+import { calculateOcaFcrRealisasi } from '../utils/fcr-realisasi.utils';
 import { OcaUpsertService } from '../repository/oca-upsert.service';
 import {
   classifyTicket,
@@ -181,6 +182,18 @@ export class OcaUploadService {
         'Eskalasi/ID Remedy_IT/AO/EMS': row['Eskalasi/ID Remedy_IT/AO/EMS'],
       });
 
+      const fcrRealisasiResult = calculateOcaFcrRealisasi({
+        eskalasiAm: row['Eskalasi/ID Remedy_IT/AO/EMS'],
+        description: row['Description'],
+        idRemedyNo: row['ID Remedy_NO'],
+        reasonOsl: row['Reason OSL'],
+        countInboundMessage: ExcelUtils.parseSafeInt(row['Count Inbound Message']) || 0,
+        inSla: slaStatus,
+        msisdn: row['Jumlah MSISDN'] || '',
+        subCategory: row['Sub Category'] || '',
+        detailCategory: row['Detail Category'] || '',
+      });
+
       const rowData = {
         // EXACT header string from CSV
         ticketNumber: row['Ticket Number'],
@@ -250,6 +263,8 @@ export class OcaUploadService {
         product: derivedProduct?.toUpperCase() || '-',
         sla: slaStatus,
         fcr: fcrStatus,
+        isFcrRealisasi: fcrRealisasiResult.isFcrRealisasi,
+        eskalasiRealisasiTarget: fcrRealisasiResult.eskalasiRealisasiTarget,
         eskalasi: typeEskalasi,
         isPareto: derivedAccountCategory === 'P1' ? true : false,
         isVip: isVip,

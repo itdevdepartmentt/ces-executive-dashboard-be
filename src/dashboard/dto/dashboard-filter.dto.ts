@@ -25,6 +25,10 @@ export class DashboardFilterDto {
   })
   @IsBoolean()
   isFcr?: boolean;
+
+  @IsOptional()
+  @IsIn(['kip', 'realisasi'])
+  fcrType?: 'kip' | 'realisasi' = 'kip';
 }
 
 export class PaginationDto extends DashboardFilterDto {

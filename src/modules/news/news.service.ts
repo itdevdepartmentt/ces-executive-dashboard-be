@@ -326,4 +326,36 @@ export class NewsService {
 
     return removed;
   }
+
+  // ─── BOOKMARKS ───────────────────────────────────────────────────────────────
+
+  async toggleBookmark(newsId: string, userId: string) {
+    const news = await this.prisma.news.findFirst({
+      where: { id: newsId, deletedAt: null },
+    });
+    if (!news) throw new NotFoundException('News article not found');
+
+    const existingBookmark = await this.prisma.newsBookmark.findUnique({
+      where: { userId_newsId: { userId, newsId } },
+    });
+
+    if (existingBookmark) {
+      await this.prisma.newsBookmark.delete({
+        where: { id: existingBookmark.id },
+      });
+      return { isBookmarked: false };
+    } else {
+      await this.prisma.newsBookmark.create({
+        data: { userId, newsId },
+      });
+      return { isBookmarked: true };
+    }
+  }
+
+  async getBookmarkStatus(newsId: string, userId: string) {
+    const existingBookmark = await this.prisma.newsBookmark.findUnique({
+      where: { userId_newsId: { userId, newsId } },
+    });
+    return { isBookmarked: !!existingBookmark };
+  }
 }

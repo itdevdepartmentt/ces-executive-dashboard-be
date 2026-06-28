@@ -88,8 +88,9 @@ export class OcaUpsertService {
         ${ExcelUtils.formatSqlValue(row.eskalasi)},
         ${ExcelUtils.formatSqlValue(row.isVip)},
         ${ExcelUtils.formatSqlValue(row.isPareto)},
-        ${ExcelUtils.formatSqlValue(row.updatedAtExcel)}
-
+        ${ExcelUtils.formatSqlValue(row.updatedAtExcel)},
+        ${ExcelUtils.formatSqlValue(row.isFcrRealisasi)},
+        ${ExcelUtils.formatSqlValue(row.eskalasiRealisasiTarget)}
       )`;
       })
       .join(',');
@@ -110,7 +111,8 @@ INSERT INTO "RawOca" (
     "amount_revenue", "jumlah_msisdn", "tags", "id_remedy_no",
     "eskalasi_id_remedy_it_ao_ems", "reason_osl", "project_id", "nama_perusahaan",
     "roaming", "sub_category", "detail_category", "iot", "validationStatus", "statusTiket", "product",
-    "inSla", "isFcr", "eskalasi", "isVip", "isPareto", "updated_at_excel"
+    "inSla", "isFcr", "eskalasi", "isVip", "isPareto", "updated_at_excel",
+    "isFcrRealisasi", "eskalasi_realisasi_target"
 )
 VALUES ${values}
 ON CONFLICT ("ticket_number")
@@ -168,7 +170,9 @@ DO UPDATE SET
     "eskalasi"                    = EXCLUDED."eskalasi",
     "isVip"                       = EXCLUDED."isVip",
     "isPareto"                    = EXCLUDED."isPareto",
-    "updated_at_excel"            = EXCLUDED."updated_at_excel"
+    "updated_at_excel"            = EXCLUDED."updated_at_excel",
+    "isFcrRealisasi"              = EXCLUDED."isFcrRealisasi",
+    "eskalasi_realisasi_target"   = EXCLUDED."eskalasi_realisasi_target"
     RETURNING xmax
     )
     SELECT

@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import axios from 'axios';
 import { PrismaService } from 'prisma/prisma.service';
 import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
+import { calculateOcaFcrRealisasi } from '../utils/fcr-realisasi.utils';
 import {
   classifyTicket,
   createLookupMap,
@@ -156,6 +157,18 @@ export class DailyOcaTicketProcessor extends WorkerHost {
           'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
         });
 
+        const fcrRealisasiResult = calculateOcaFcrRealisasi({
+          eskalasiAm: mappedData.eskalasiId,
+          description: mappedData.description,
+          idRemedyNo: mappedData.idRemedyNo,
+          reasonOsl: mappedData.reasonOsl,
+          countInboundMessage: ExcelUtils.parseSafeInt(mappedData.countInboundMessage) || 0,
+          inSla: slaStatus,
+          msisdn: mappedData.jumlahMsisdn || '',
+          subCategory: mappedData.subCategory || '',
+          detailCategory: mappedData.detailCategory || '',
+        });
+
         // D. Return Final Object
         return {
           ...mappedData,
@@ -165,6 +178,8 @@ export class DailyOcaTicketProcessor extends WorkerHost {
           product: derivedProduct?.toUpperCase() || '-',
           sla: slaStatus,
           fcr: fcrStatus,
+          isFcrRealisasi: fcrRealisasiResult.isFcrRealisasi,
+          eskalasiRealisasiTarget: fcrRealisasiResult.eskalasiRealisasiTarget,
           eskalasi: typeEskalasi,
           isPareto: derivedAccountCategory === 'P1' ? true : false,
           isVip: isVip,
