@@ -103,6 +103,8 @@ export class CommentService {
     });
 
     try {
+      const notifiedIds = new Set<string>();
+
       if (finalParentId && recipientIdForReply && recipientIdForReply !== userId) {
         // Notification for REPLY
         await this.prisma.newsActivity.create({
@@ -114,6 +116,7 @@ export class CommentService {
             commentId: comment.id,
           },
         });
+        notifiedIds.add(recipientIdForReply);
       } else if (!finalParentId && news.authorId && news.authorId !== userId) {
         // Notification for COMMENT on Article
         await this.prisma.newsActivity.create({
@@ -122,6 +125,24 @@ export class CommentService {
             newsId,
             actorId: userId,
             recipientId: news.authorId,
+            commentId: comment.id,
+          },
+        });
+        notifiedIds.add(news.authorId);
+      }
+
+      // Special feature: send notification to qcnyaces@gmail.com for ANY comment on BISA
+      const adminUser = await this.prisma.user.findUnique({
+        where: { email: 'qcnyaces@gmail.com' },
+        select: { id: true },
+      });
+      if (adminUser && adminUser.id !== userId && !notifiedIds.has(adminUser.id)) {
+        await this.prisma.newsActivity.create({
+          data: {
+            type: 'COMMENT',
+            newsId,
+            actorId: userId,
+            recipientId: adminUser.id,
             commentId: comment.id,
           },
         });
