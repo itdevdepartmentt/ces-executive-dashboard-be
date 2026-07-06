@@ -1550,4 +1550,64 @@ ORDER BY 1 ASC;
 
     return { unitId, caseId };
   }
+  private cachedFilterOptions: any = null;
+  private lastCacheTime: number = 0;
+
+  async getFilterOptions() {
+    // Return cache if it's less than 1 hour old
+    const now = Date.now();
+    if (this.cachedFilterOptions && now - this.lastCacheTime < 1000 * 60 * 60) {
+      return this.cachedFilterOptions;
+    }
+
+    try {
+      // Only scan the last 30 days to avoid full table scans on millions of rows
+      const last30Days = new Date();
+      last30Days.setDate(last30Days.getDate() - 30);
+
+      // Run sequentially to avoid exhausting the Supabase connection pooler
+      const ocaCat = await this.prisma.rawOca.findMany({ where: { ticketCreated: { gte: last30Days } }, distinct: ['category'], select: { category: true } });
+      const ocaSub = await this.prisma.rawOca.findMany({ where: { ticketCreated: { gte: last30Days } }, distinct: ['subCategory'], select: { subCategory: true } });
+      const ocaDet = await this.prisma.rawOca.findMany({ where: { ticketCreated: { gte: last30Days } }, distinct: ['detailCategory'], select: { detailCategory: true } });
+      
+      const omnixCat = await this.prisma.rawOmnix.findMany({ where: { dateStartInteraction: { gte: last30Days } }, distinct: ['mainCategory'], select: { mainCategory: true } });
+      const omnixSub = await this.prisma.rawOmnix.findMany({ where: { dateStartInteraction: { gte: last30Days } }, distinct: ['category'], select: { category: true } });
+      const omnixDet = await this.prisma.rawOmnix.findMany({ where: { dateStartInteraction: { gte: last30Days } }, distinct: ['subCategory'], select: { subCategory: true } });
+      
+      const callCat = await this.prisma.rawCall.findMany({ where: { updateStamp: { gte: last30Days } }, distinct: ['topicReason1'], select: { topicReason1: true } });
+      const callSub = await this.prisma.rawCall.findMany({ where: { updateStamp: { gte: last30Days } }, distinct: ['topicReason2'], select: { topicReason2: true } });
+      const callDet = await this.prisma.rawCall.findMany({ where: { updateStamp: { gte: last30Days } }, distinct: ['topicResult'], select: { topicResult: true } });
+
+      const categories = new Set([
+        ...ocaCat.map(c => c.category),
+        ...omnixCat.map(c => c.mainCategory),
+        ...callCat.map(c => c.topicReason1),
+      ].filter(Boolean));
+
+      const subCategories = new Set([
+        ...ocaSub.map(c => c.subCategory),
+        ...omnixSub.map(c => c.category),
+        ...callSub.map(c => c.topicReason2),
+      ].filter(Boolean));
+
+      const detailCategories = new Set([
+        ...ocaDet.map(c => c.detailCategory),
+        ...omnixDet.map(c => c.subCategory),
+        ...callDet.map(c => c.topicResult),
+      ].filter(Boolean));
+
+      this.cachedFilterOptions = {
+        categories: Array.from(categories).sort(),
+        subCategories: Array.from(subCategories).sort(),
+        detailCategories: Array.from(detailCategories).sort(),
+      };
+      this.lastCacheTime = now;
+
+      return this.cachedFilterOptions;
+    } catch (e: any) {
+      console.error('Failed to get filter options:', e.message);
+      // Fallback to cache if available, or empty arrays to avoid crash
+      return this.cachedFilterOptions || { categories: [], subCategories: [], detailCategories: [] };
+    }
+  }
 }

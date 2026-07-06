@@ -115,8 +115,9 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
         if (!derivedProduct) {
+          const agentName = mappedData.assignee || mappedData.reporter || '';
           if (/TC|Engineer/i.test(
-            agentMap.get(mappedData.assignee?.trim().toLowerCase()) || '',
+            agentMap.get(agentName.trim().toLowerCase()) || '',
           )) {
             derivedProduct = 'SOLUTION';
             fcrStatus = true;
@@ -264,7 +265,7 @@ export class DailyOcaTicketProcessor extends WorkerHost {
       channelOca: baseData.channel,
       category: customFields['category'],
       reporter: customFields['Reporter'],
-      assignee: baseData.assigned_data?.name ?? '-',
+      assignee: baseData.assigned_data?.name || customFields['Reporter'] || '-',
       department: baseData.department_data?.name ?? '-',
       priority: baseData.priority,
       lastStatus: baseData.status,

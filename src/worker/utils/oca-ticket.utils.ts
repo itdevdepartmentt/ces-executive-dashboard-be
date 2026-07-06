@@ -80,13 +80,14 @@ export function determineChannel(
     channelOca?: string;
     ticketSubject?: string;
     assignee?: string;
+    reporter?: string;
   },
   agentMap: Map<string, string>,
 ): string {
   const department = row.department || '';
   const channel = row.channelOca || '';
 
-  const agentName = row.assignee || '';
+  const agentName = row.assignee || row.reporter || '';
   const agentGroup = agentMap.get(agentName.trim().toLowerCase());
 
   if (/cc/i.test(agentGroup || '')) {

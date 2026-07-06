@@ -87,6 +87,7 @@ export class OcaUploadService {
         department: row['Department'],
         subCategory: row['Sub Category'],
         assignee: row['Assignee'],
+        reporter: row['Reporter'],
         description: row['Description'],
         detailCategory: row['Detail Category'],
         channelOca: row['Channel'],
@@ -147,7 +148,8 @@ export class OcaUploadService {
       let derivedProduct = kipMap.get(compositeFcrKey || '-');
 
       if (!derivedProduct) {
-        if (/TC|Engineer/i.test(agentMap.get(row['Assignee'].trim().toLowerCase()) || '')) {
+        const agentName = row['Assignee'] || row['Reporter'] || '';
+        if (/TC|Engineer/i.test(agentMap.get(agentName.trim().toLowerCase()) || '')) {
           this.logger.debug(`Applying fallback product logic for Ticket ${row['Ticket Number']} due to missing KIP mapping`);
           derivedProduct = 'SOLUTION';
           fcrStatus = true;

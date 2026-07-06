@@ -131,21 +131,24 @@ export class CommentService {
         notifiedIds.add(news.authorId);
       }
 
-      // Special feature: send notification to qcnyaces@gmail.com for ANY comment on BISA
-      const adminUser = await this.prisma.user.findUnique({
-        where: { email: 'qcnyaces@gmail.com' },
+      // Special feature: send notification to all QC users for ANY comment on BISA
+      const qcUsers = await this.prisma.user.findMany({
+        where: { role: 'QC' },
         select: { id: true },
       });
-      if (adminUser && adminUser.id !== userId && !notifiedIds.has(adminUser.id)) {
-        await this.prisma.newsActivity.create({
-          data: {
-            type: 'COMMENT',
-            newsId,
-            actorId: userId,
-            recipientId: adminUser.id,
-            commentId: comment.id,
-          },
-        });
+      for (const qc of qcUsers) {
+        if (qc.id !== userId && !notifiedIds.has(qc.id)) {
+          await this.prisma.newsActivity.create({
+            data: {
+              type: 'COMMENT',
+              newsId,
+              actorId: userId,
+              recipientId: qc.id,
+              commentId: comment.id,
+            },
+          });
+          notifiedIds.add(qc.id);
+        }
       }
     } catch (err) {
       this.logger.error('Failed to create activity record', err);

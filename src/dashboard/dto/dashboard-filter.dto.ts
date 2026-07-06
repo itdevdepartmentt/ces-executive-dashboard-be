@@ -29,6 +29,18 @@ export class DashboardFilterDto {
   @IsOptional()
   @IsIn(['kip', 'realisasi'])
   fcrType?: 'kip' | 'realisasi' = 'kip';
+
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : value?.split(',').filter(Boolean) || []))
+  categories?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : value?.split(',').filter(Boolean) || []))
+  subCategories?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : value?.split(',').filter(Boolean) || []))
+  detailCategories?: string[];
 }
 
 export class PaginationDto extends DashboardFilterDto {

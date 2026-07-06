@@ -8,7 +8,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.ADMIN, UserRole.QC, UserRole.TL)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

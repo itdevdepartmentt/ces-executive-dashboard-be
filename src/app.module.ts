@@ -20,9 +20,12 @@ import { LookupManagementModule } from './modules/lookup-management/lookup-manag
 import { RawDownloadModule } from './modules/raw-download/raw-download.module';
 import { UsersModule } from './modules/users/users.module';
 import { SurveyModule } from './modules/survey/survey.module';
+import { QaModule } from './modules/qa/qa.module';
+
 import { CacheModule } from '@nestjs/cache-manager';
 import Keyv from 'keyv';
 import { createKeyv } from '@keyv/redis';
+import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconciliation.module';
 
 @Module({
   imports: [
@@ -82,6 +85,8 @@ import { createKeyv } from '@keyv/redis';
     }),
     UsersModule,
     SurveyModule,
+    QaModule,
+    QaReconciliationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

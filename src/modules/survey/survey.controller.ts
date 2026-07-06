@@ -37,49 +37,49 @@ export class SurveyController {
   // ─── Admin Endpoints (Auth + ADMIN Role) ───
   @Post('admin/generate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'USER')
+  @Roles('ADMIN', 'USER', 'QC')
   generateLink(@Body() body: { ticketId: string }) {
     // Force reload
     return this.service.generateLink(body.ticketId);
   }
   @Get('admin/fields')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'USER')
+  @Roles('ADMIN', 'USER', 'QC')
   getAllFields(@Query() query: QuerySurveyDto) {
     return this.service.getAllFields(query);
   }
 
   @Post('admin/fields')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   createField(@Body() dto: CreateSurveyFieldDto) {
     return this.service.createField(dto);
   }
 
   @Patch('admin/fields/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   updateField(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSurveyFieldDto) {
     return this.service.updateField(id, dto);
   }
 
   @Delete('admin/fields/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   deleteField(@Param('id', ParseIntPipe) id: number) {
     return this.service.deleteField(id);
   }
 
   @Get('admin/responses')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'USER')
+  @Roles('ADMIN', 'USER', 'QC')
   getResponses(@Query() query: QuerySurveyDto) {
     return this.service.getResponses(query);
   }
 
   @Get('admin/responses/download')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   downloadResponses(@Res() res: Response) {
     return this.service.downloadResponses(res);
   }

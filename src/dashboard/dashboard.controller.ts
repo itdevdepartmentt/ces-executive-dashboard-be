@@ -4,6 +4,7 @@ import {
   Query,
   UseGuards,
   ValidationPipe,
+  UsePipes,
 } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { DashboardFilterDto, PaginationDto, PriorityTicketQueryDto } from './dto/dashboard-filter.dto';
@@ -13,6 +14,7 @@ import { JwtAuthGuard } from 'src/common/guard/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ transform: true }))
 @Controller('dashboard')
 export class DashboardController {
   constructor(
@@ -39,6 +41,11 @@ export class DashboardController {
   @Get('summary')
   getSummary(@Query() filter: DashboardFilterDto) {
     return this.ocaService.getExecutiveSummary(filter);
+  }
+
+  @Get('filter-options')
+  getFilterOptions() {
+    return this.ocaService.getFilterOptions();
   }
 
   @Get('channels')

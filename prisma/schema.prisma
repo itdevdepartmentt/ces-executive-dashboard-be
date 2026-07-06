@@ -9,20 +9,18 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         UserRole @default(USER)
-  createdAt    DateTime @default(now())
-
-  // Relations
+  id                 String            @id @default(uuid())
+  name               String
+  email              String            @unique
+  passwordHash       String
+  role               UserRole          @default(USER)
+  createdAt          DateTime          @default(now())
   newsArticles       News[]
+  actorActivities    NewsActivity[]    @relation("ActivityActor")
+  receivedActivities NewsActivity[]    @relation("ActivityRecipient")
+  bookmarks          NewsBookmark[]
   comments           NewsComment[]
   commentLikes       NewsCommentLike[]
-  actorActivities    NewsActivity[] @relation("ActivityActor")
-  receivedActivities NewsActivity[] @relation("ActivityRecipient")
-  bookmarks          NewsBookmark[]
 }
 
 model RawCsat {
@@ -92,7 +90,6 @@ model RawOmnix {
   updatedById                  Int?      @map("updated_by_id")
   updatedByName                String?   @map("updated_by_name")
   channelId                    Int?      @map("channel_id")
-  channelNameOmnix             String?   @map("channel_name_omnix")
   channelName                  String?   @map("channel_name")
   sessionId                    String?   @map("session_id")
   categoryId                   Int?      @map("category_id")
@@ -139,23 +136,24 @@ model RawOmnix {
   customerNamaCorp             String?   @map("customer_nama_corp")
   datePending                  DateTime? @map("date_pending")
   dateResolve                  DateTime? @map("date_resolve")
-  dateEskalasiEbo              DateTime? @map("date_eskalasi_ebo")
-  dateEskalasiIt               DateTime? @map("date_eskalasi_it")
-  dateEskalasiNo               DateTime? @map("date_eskalasi_no")
-  dateEskalasiPartner          DateTime? @map("date_eskalasi_partner")
-  dateMenungguApprovalBillco   DateTime? @map("date_menunggu_approval_billco")
   customerInstagramId          String?   @map("customer_instagram_id")
   customerPhone                String?   @map("customer_phone")
   customerFacebookId           String?   @map("customer_facebook_id")
   eskalasi                     String?
   inSla                        Boolean?
   isFcr                        Boolean?
-  isFcrRealisasi               Boolean?
   isPareto                     Boolean?
   isVip                        Boolean?
   product                      String?
   statusTiket                  Boolean?
   validationStatus             String?
+  dateEskalasiEbo              DateTime? @map("date_eskalasi_ebo")
+  dateEskalasiIt               DateTime? @map("date_eskalasi_it")
+  dateEskalasiNo               DateTime? @map("date_eskalasi_no")
+  dateEskalasiPartner          DateTime? @map("date_eskalasi_partner")
+  dateMenungguApprovalBillco   DateTime? @map("date_menunggu_approval_billco")
+  channelNameOmnix             String?   @map("channel_name_omnix")
+  isFcrRealisasi               Boolean?
 
   @@index([channelName, dateStartInteraction], map: "idx_rawomnix_channel_created")
   @@index([ticketPerusahaan], map: "idx_rawomnix_company")
@@ -164,41 +162,38 @@ model RawOmnix {
 }
 
 model RawCall {
-  id           Int       @id @default(autoincrement())
-  kipId        String    @map("kip_id")
-  updateStamp  DateTime? @map("update_stamp")
-  msisdn       String?   @map("msisdn")
-  brand        String?   @map("brand")
-  unitType     String?   @map("unit_type")
-  unitName     String?   @map("unit_name")
-  areaName     String?   @map("area_name")
-  regName      String?   @map("reg_name")
-  topicReason1 String?   @map("topic_reason_1")
-  topicReason2 String?   @map("topic_reason_2")
-  topicResult  String?   @map("topic_result")
-  service      String?   @map("service")
-  appId        String?   @map("app_id")
-  userId       String?   @map("user_id")
-  employeeCode String?   @map("employee_code")
-  employeeName String?   @map("employee_name")
-  notes        String?   @map("notes")
+  id               Int       @id @default(autoincrement())
+  corp             String?
+  customerType     String?   @map("customer_type")
+  eskalasi         String?
+  inSla            Boolean?
+  isFcr            Boolean?
+  isPareto         Boolean?
+  isVip            Boolean?
+  product          String?
+  projectId        String?   @map("project_id")
+  statusTiket      Boolean?
+  tier             String?
+  validationStatus String?
+  appId            String?   @map("app_id")
+  areaName         String?   @map("area_name")
+  brand            String?   @map("brand")
+  employeeCode     String?   @map("employee_code")
+  employeeName     String?   @map("employee_name")
+  msisdn           String?   @map("msisdn")
+  notes            String?   @map("notes")
+  regName          String?   @map("reg_name")
+  service          String?   @map("service")
+  topicReason1     String?   @map("topic_reason_1")
+  topicReason2     String?   @map("topic_reason_2")
+  topicResult      String?   @map("topic_result")
+  unitName         String?   @map("unit_name")
+  unitType         String?   @map("unit_type")
+  updateStamp      DateTime? @map("update_stamp")
+  userId           String?   @map("user_id")
+  kipId            String    @unique @map("kip_id")
+  isFcrRealisasi   Boolean?
 
-  corp String? 
-  projectId String? @map("project_id")
-  tier String?
-  customerType String? @map("customer_type")
-
-  eskalasi                     String?
-  inSla                        Boolean?
-  isFcr                        Boolean?
-  isFcrRealisasi               Boolean?
-  isPareto                     Boolean?
-  isVip                        Boolean?
-  product                      String?
-  statusTiket                  Boolean?
-  validationStatus             String?
-
-  @@unique([kipId])
   @@index([msisdn])
   @@index([updateStamp])
 }
@@ -207,7 +202,6 @@ model RawOca {
   id                      Int       @id @default(autoincrement())
   ticketNumber            String    @unique @map("ticket_number")
   ticketSubject           String?   @map("ticket_subject")
-  channelOca              String?   @map("channel_oca")
   channel                 String?   @map("channel")
   category                String?   @map("category")
   reporter                String?   @map("reporter")
@@ -260,8 +254,9 @@ model RawOca {
   isVip                   Boolean?
   inSla                   Boolean?
   isFcr                   Boolean?
-  isFcrRealisasi          Boolean?
+  channelOca              String?   @map("channel_oca")
   eskalasiRealisasiTarget String?   @map("eskalasi_realisasi_target")
+  isFcrRealisasi          Boolean?
 
   @@index([ticketNumber])
   @@index([ticketCreated])
@@ -319,90 +314,76 @@ model IncidentReport {
 }
 
 model RawAvaya {
-  id                Int      @id @default(autoincrement())
-  date              DateTime 
-  vector            Int      // The queue or routing identifier
-  
-  // Volume Metrics
-  inboundCalls      Int      @map("inbound_calls")
-  flowIn            Int      @map("flow_in")
-  acdCalls          Int      @map("acd_calls")
-  mainAcdCalls      Int      @map("main_acd_calls")
-  backupAcdCalls    Int      @map("backup_acd_calls")
-  connectCalls      Int      @map("connect_calls")
-  abanCalls         Int      @map("aban_calls")
-  flowOut           Int      @map("flow_out")
-  forcedBusyCalls   Int      @map("forced_busy_calls")
-  forcedDiscCalls   Int      @map("forced_disc_calls")
+  id              Int      @id @default(autoincrement())
+  date            DateTime
+  vector          Int
+  inboundCalls    Int      @map("inbound_calls")
+  flowIn          Int      @map("flow_in")
+  acdCalls        Int      @map("acd_calls")
+  mainAcdCalls    Int      @map("main_acd_calls")
+  backupAcdCalls  Int      @map("backup_acd_calls")
+  connectCalls    Int      @map("connect_calls")
+  abanCalls       Int      @map("aban_calls")
+  flowOut         Int      @map("flow_out")
+  forcedBusyCalls Int      @map("forced_busy_calls")
+  forcedDiscCalls Int      @map("forced_disc_calls")
+  acdTime         Int      @map("acd_time")
+  holdTime        Int      @map("hold_time")
+  aht             Decimal  @db.Decimal(10, 4)
+  avgSpeedAns     Decimal  @map("avg_speed_ans") @db.Decimal(10, 4)
+  avgAcdTime      Decimal  @map("avg_acd_time") @db.Decimal(10, 4)
+  avgAcwTime      Decimal  @map("avg_acw_time") @db.Decimal(10, 4)
+  avgConnectTime  Decimal  @map("avg_connect_time") @db.Decimal(10, 4)
+  avgAbanTime     Decimal  @map("avg_aban_time") @db.Decimal(10, 4)
+  avgVdnTime      Decimal  @map("avg_vdn_time") @db.Decimal(10, 4)
+  percentAban     Float    @map("percent_aban")
+  percentBusy     Float    @map("percent_busy")
+  percentFlowOut  Float    @map("percent_flow_out")
+  skillPref1      Int      @map("1st_skill_pref")
+  skillPref2      Int      @map("2nd_skill_pref")
+  skillPref3      Int      @map("3rd_skill_pref")
 
-  // Duration Metrics (Stored in seconds or original units)
-  acdTime           Int      @map("acd_time")
-  holdTime          Int      @map("hold_time")
-  
-  // Averages & Percentages (Using Decimal for precision)
-  aht               Decimal  @db.Decimal(10, 4)
-  avgSpeedAns       Decimal  @map("avg_speed_ans") @db.Decimal(10, 4)
-  avgAcdTime        Decimal  @map("avg_acd_time") @db.Decimal(10, 4)
-  avgAcwTime        Decimal  @map("avg_acw_time") @db.Decimal(10, 4)
-  avgConnectTime    Decimal  @map("avg_connect_time") @db.Decimal(10, 4)
-  avgAbanTime       Decimal  @map("avg_aban_time") @db.Decimal(10, 4)
-  avgVdnTime        Decimal  @map("avg_vdn_time") @db.Decimal(10, 4)
-  
-  percentAban       Float    @map("percent_aban")
-  percentBusy       Float    @map("percent_busy")
-  percentFlowOut    Float    @map("percent_flow_out")
-
-  // Skill Preferences
-  skillPref1        Int      @map("1st_skill_pref")
-  skillPref2        Int      @map("2nd_skill_pref")
-  skillPref3        Int      @map("3rd_skill_pref")
-
-  @@unique([date, vector]) 
+  @@unique([date, vector])
   @@index([date])
   @@map("raw_avaya")
 }
 
 model News {
-  id          String    @id @default(cuid())
-  title       String
-  content     Json      // TipTap JSON structure
-  summary     String?   @db.Text
-  authorName  String
-  authorId    String?   @map("author_id")
-  author      User?     @relation(fields: [authorId], references: [id])
-  category    String?
-  searchText  String?   @db.Text
-  status      String    @default("PUBLISHED")
-  viewCount   Int       @default(0)
-  
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime? // For Soft Delete
-
-  // Relations
-  comments    NewsComment[]
-  activities  NewsActivity[]
-  bookmarks   NewsBookmark[]
+  id         String         @id @default(cuid())
+  title      String
+  content    Json
+  summary    String?
+  authorName String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+  category   String?
+  searchText String?
+  status     String         @default("PUBLISHED")
+  viewCount  Int            @default(0)
+  authorId   String?        @map("author_id")
+  author     User?          @relation(fields: [authorId], references: [id])
+  activities NewsActivity[]
+  bookmarks  NewsBookmark[]
+  comments   NewsComment[]
 
   @@index([deletedAt])
   @@index([authorId])
 }
 
 model NewsComment {
-  id        String   @id @default(cuid())
-  content   String   @db.Text
-  newsId    String   @map("news_id")
-  news      News     @relation(fields: [newsId], references: [id], onDelete: Cascade)
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parentId  String?  @map("parent_id")
-  parent    NewsComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   NewsComment[]  @relation("CommentReplies")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id         String            @id @default(cuid())
+  content    String
+  newsId     String            @map("news_id")
+  userId     String            @map("user_id")
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  parentId   String?           @map("parent_id")
   activities NewsActivity[]
+  news       News              @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  parent     NewsComment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies    NewsComment[]     @relation("CommentReplies")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes      NewsCommentLike[]
 
   @@index([newsId])
@@ -412,12 +393,12 @@ model NewsComment {
 }
 
 model NewsCommentLike {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  commentId String   @map("comment_id")
+  id        String      @id @default(cuid())
+  userId    String      @map("user_id")
+  commentId String      @map("comment_id")
+  createdAt DateTime    @default(now())
   comment   NewsComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, commentId])
   @@index([commentId])
@@ -426,17 +407,17 @@ model NewsCommentLike {
 
 model NewsActivity {
   id          String       @id @default(cuid())
-  type        String       // 'COMMENT' (extendable: 'LIKE', 'MENTION', etc.)
+  type        String
   newsId      String       @map("news_id")
-  news        News         @relation(fields: [newsId], references: [id], onDelete: Cascade)
   actorId     String       @map("actor_id")
-  actor       User         @relation("ActivityActor", fields: [actorId], references: [id])
   recipientId String       @map("recipient_id")
-  recipient   User         @relation("ActivityRecipient", fields: [recipientId], references: [id])
   commentId   String?      @map("comment_id")
-  comment     NewsComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
   isRead      Boolean      @default(false)
   createdAt   DateTime     @default(now())
+  actor       User         @relation("ActivityActor", fields: [actorId], references: [id])
+  comment     NewsComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  news        News         @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  recipient   User         @relation("ActivityRecipient", fields: [recipientId], references: [id])
 
   @@index([recipientId, isRead])
   @@index([newsId])
@@ -446,10 +427,10 @@ model NewsActivity {
 model NewsBookmark {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   newsId    String   @map("news_id")
-  news      News     @relation(fields: [newsId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  news      News     @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, newsId])
   @@index([newsId])
@@ -457,20 +438,20 @@ model NewsBookmark {
 }
 
 model LookupKIP {
-  id              Int @id @default(autoincrement())
-  category        String? 
-  subCategory     String?
+  id                 Int      @id @default(autoincrement())
+  category           String?
+  subCategory        String?
+  detailCategory     String?
+  compositeKey       String?
+  fcrNonSatuan       String?
+  escToSatuan        String?
+  fcrNonMassal       String?
+  escToMassal        String?
+  isFcr              Boolean?
+  product            String?
+  detailCategory2    String?
   detailCategoryFull String?
-  detailCategory  String?
-  detailCategory2 String?
-  compositeKeyOmnix String?
-  compositeKey    String?
-  fcrNonSatuan    String?
-  escToSatuan     String?
-  fcrNonMassal    String?
-  escToMassal     String?
-  isFcr           Boolean?
-  product         String?
+  compositeKeyOmnix  String?
 
   @@index([compositeKey])
   @@index([isFcr])
@@ -479,41 +460,129 @@ model LookupKIP {
 }
 
 model LookupAgent {
-  id              Int @id @default(autoincrement())
-  namaAgent       String? @map("nama_agent")
-  group           String?
+  id         Int     @id @default(autoincrement())
+  namaAgent  String? @map("nama_agent")
+  group      String?
+  tapper     String?
+  teamLeader String? @map("team_leader")
 
   @@map("lookup_agent")
 }
 
 model SurveyField {
-  id        Int      @id @default(autoincrement())
-  label     String
-  type      String   // RATING, NPS, TEXT, SELECT
-  options   Json?    // For SELECT type: ["option1", "option2", ...]
-  isRequired Boolean @default(true)
-  order     Int      @default(0)
-  isActive  Boolean  @default(true)
+  id               Int      @id @default(autoincrement())
+  label            String
+  type             String
+  options          Json?
+  isRequired       Boolean  @default(true)
+  order            Int      @default(0)
+  isActive         Boolean  @default(true)
   dependsOnFieldId Int?
   dependsOnValue   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("survey_field")
 }
 
 model SurveyResponse {
-  id              Int      @id @default(autoincrement())
-  ticketId        String?  @unique @map("ticket_id")
-  agentName       String?  @map("agent_name")
-  generatedAt     DateTime? @map("generated_at")
-  answers         Json     // { fieldId: value, ... }
-  createdAt       DateTime @default(now())
+  id          Int       @id @default(autoincrement())
+  ticketId    String?   @unique @map("ticket_id")
+  agentName   String?   @map("agent_name")
+  generatedAt DateTime? @map("generated_at")
+  answers     Json
+  createdAt   DateTime  @default(now())
 
   @@map("survey_response")
+}
+
+model QaFormTapping {
+  id                    String   @id @default(uuid())
+  createdDate           DateTime @default(now())
+  tapper                String
+  idTiket               String
+  agent                 String
+  channel               String
+  jenisInteraksi        String
+  kipLevel2             String
+  kipLevel3             String
+  inOutSla              String
+  projectId             String
+  perusahaan            String
+  customerRequests      String
+  agentResponse         String
+  handlingTime          String?  @map("handling_time")
+  scoreValiditas        Int      @default(0)
+  scoreServiceLevel     Int      @default(0)
+  scoreKalimat          Int      @default(0)
+  scoreResponTime       Int      @default(0)
+  scoreDokumentasi      Int      @default(0)
+  status                String   @default("Sample")
+  solusi                String   @default("")
+  notes                 String   @default("")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  tappingDuration       Int?     @map("tapping_duration")
+  parameterPenilaian    String   @default("") @map("parameter_penilaian")
+  peak                  Int      @default(3)
+  subParameterPenilaian String   @default("") @map("sub_parameter_penilaian")
+  teamLeader            String   @default("") @map("team_leader")
+
+  @@map("qa_form_tapping")
+}
+
+model QaTicket {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  idTiket          String
+  agent            String
+  channel          String
+  jenisInteraksi   String
+  kipLevel2        String
+  kipLevel3        String
+  inOutSla         String
+  projectId        String
+  perusahaan       String
+  customerRequests String
+  agentResponse    String
+  handlingTime     String?  @map("handling_time")
+  tapper           String   @default("")
+  teamLeader       String   @default("") @map("team_leader")
+
+  @@map("qa_ticket")
 }
 
 enum UserRole {
   USER
   ADMIN
+  QC
+  TL
+}
+
+model QaReconciliation {
+  id              String   @id @default(uuid())
+  qaFormTappingId String   @map("qa_form_tapping_id")
+  tlName          String   @map("tl_name")
+  qcName          String   @map("qc_name")
+  reason          String
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  proposedScoreValiditas    Int?
+  proposedScoreServiceLevel Int?
+  proposedScoreKalimat      Int?
+  proposedScoreResponTime   Int?
+  proposedScoreDokumentasi  Int?
+  
+  oldScoreValiditas         Int?
+  oldScoreServiceLevel      Int?
+  oldScoreKalimat           Int?
+  oldScoreResponTime        Int?
+  oldScoreDokumentasi       Int?
+
+  qcResponseNotes String?  @map("qc_response_notes")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("qa_reconciliation")
 }

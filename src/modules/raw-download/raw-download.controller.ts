@@ -7,7 +7,7 @@ import { RawDownloadService } from './raw-download.service';
 
 @Controller('raw-download')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN', 'QC')
 export class RawDownloadController {
   constructor(private readonly service: RawDownloadService) {}
 

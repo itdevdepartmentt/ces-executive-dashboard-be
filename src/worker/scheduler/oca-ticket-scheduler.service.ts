@@ -122,11 +122,16 @@ export class OcaTicketSchedulerService {
     const lastSyncWib = now
       ? moment(now).tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss')
       : null;
-    await this.prisma.ocaDailySync.upsert({
-      where: { id: 1 }, // Always keep one row
-      update: { lastSync: now },
-      create: { id: 1, lastSync: now },
-    });
+    
+    try {
+      await this.prisma.ocaDailySync.upsert({
+        where: { id: 1 }, // Always keep one row
+        update: { lastSync: now },
+        create: { id: 1, lastSync: now },
+      });
+    } catch (err: any) {
+      this.logger.error(`Failed to update last sync time: ${err.message}`);
+    }
 
     this.logger.log('Ticket sync process completed.');
     return { lastJob, lastSync: lastSyncWib };

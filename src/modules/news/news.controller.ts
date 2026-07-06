@@ -24,7 +24,6 @@ import { QueryNewsDto } from './dto/query-news.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
-const ALLOWED_UPDATE_EMAIL = 'qcnyaces@gmail.com';
 
 @Controller('news')
 export class NewsController {
@@ -44,7 +43,7 @@ export class NewsController {
   // ADMIN ONLY: Create, Update, Delete, and Upload
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   create(
     @Body() dto: CreateNewsDto,
     @CurrentUser() user: CurrentUserPayload,
@@ -54,7 +53,7 @@ export class NewsController {
 
   @Post('upload')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -102,23 +101,18 @@ export class NewsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateNewsDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    if (user.email !== ALLOWED_UPDATE_EMAIL) {
-      throw new ForbiddenException(
-        'Anda tidak memiliki izin untuk mengubah berita.',
-      );
-    }
     return this.newsService.update(id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'QC')
   remove(@Param('id') id: string) {
     return this.newsService.remove(id);
   }
