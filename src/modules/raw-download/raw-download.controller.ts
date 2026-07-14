@@ -7,7 +7,7 @@ import { RawDownloadService } from './raw-download.service';
 
 @Controller('raw-download')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'QC')
+@Roles('ADMIN', 'QC', 'TL_QC')
 export class RawDownloadController {
   constructor(private readonly service: RawDownloadService) {}
 
@@ -39,9 +39,20 @@ export class RawDownloadController {
     return this.sendExcelFile(res, 'call', { startDate, endDate });
   }
 
+  @Get('news-log')
+  @Roles('QC', 'TL_QC', 'ADMIN')
+  async downloadNewsLog(
+    @Res() res: express.Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    console.log(`Received News Log download request with startDate=${startDate} and endDate=${endDate}`);
+    return this.sendExcelFile(res, 'news-log', { startDate, endDate });
+  }
+
   private async sendExcelFile(
     res: express.Response,
-    type: 'omnix' | 'oca' | 'call',
+    type: 'omnix' | 'oca' | 'call' | 'news-log',
     dateRange?: { startDate?: string; endDate?: string },
   ) {
     const buffer = await this.service.generateWorkbookBuffer(type, dateRange);

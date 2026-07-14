@@ -43,7 +43,7 @@ export class NewsController {
   // ADMIN ONLY: Create, Update, Delete, and Upload
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'QC')
+  @Roles('ADMIN', 'QC', 'TL_QC')
   create(
     @Body() dto: CreateNewsDto,
     @CurrentUser() user: CurrentUserPayload,
@@ -53,7 +53,7 @@ export class NewsController {
 
   @Post('upload')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'QC')
+  @Roles('ADMIN', 'QC', 'TL_QC')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -101,7 +101,7 @@ export class NewsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'QC')
+  @Roles('ADMIN', 'QC', 'TL_QC')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateNewsDto,
@@ -112,7 +112,7 @@ export class NewsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'QC')
+  @Roles('ADMIN', 'QC', 'TL_QC')
   remove(@Param('id') id: string) {
     return this.newsService.remove(id);
   }

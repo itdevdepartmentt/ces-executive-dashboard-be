@@ -17,11 +17,13 @@ export class CsatReportSchedulerService {
   @Cron(process.env.CRON_SYNC_DAILY_CSAT ?? CronExpression.EVERY_HOUR)
   async handleScheduledReport() {
     this.logger.log('Starting scheduled CSAT Report process...');
-
-    // 1. Calculate Date Ranges (Today-1 and 7 days before)
-    const todayDate = moment().tz('Asia/Jakarta').format('YYYY-MM-DD');
-
-    return this.processCsatReport(todayDate);
+    try {
+      // 1. Calculate Date Ranges (Today-1 and 7 days before)
+      const todayDate = moment().tz('Asia/Jakarta').format('YYYY-MM-DD');
+      return await this.processCsatReport(todayDate);
+    } catch (err: any) {
+      this.logger.error(`CSAT Scheduler top-level error: ${err.message}`);
+    }
   }
 
   async processCsatReport(todayDate: string) {
@@ -53,24 +55,30 @@ export class CsatReportSchedulerService {
   }
 
   private async requestReportGeneration(todayDate: string): Promise<string> {
-    const response = await axios.post(
-      'https://webapigw.ocatelkom.co.id/oca-interaction/survey/generate-report',
-      {
-        agent_id: '621464b818b240212019132c',
-        survey_id: '66f525f2075a160011713e5e',
-        start_date: todayDate,
-        end_date: todayDate,
-      },
-      {
-        auth: {
-          username: 'tsel-app-connectivity',
-          password: '@tsel198xMu918230pp',
+    try {
+      const response = await axios.post(
+        'https://webapigw.ocatelkom.co.id/oca-interaction/survey/generate-report',
+        {
+          agent_id: '621464b818b240212019132c',
+          survey_id: '66f525f2075a160011713e5e',
+          start_date: todayDate,
+          end_date: todayDate,
         },
-      },
-    );
+        {
+          auth: {
+            username: 'tsel-app-connectivity',
+            password: '@tsel198xMu918230pp',
+          },
+          timeout: 30000, // 30 detik timeout
+        },
+      );
 
-    if (!response.data.status) throw new Error('CSAT Report Request Failed');
-    return response.data.results.report_id;
+      if (!response.data.status) throw new Error('CSAT Report Request Failed');
+      return response.data.results.report_id;
+    } catch (err: any) {
+      this.logger.error(`requestReportGeneration failed: ${err.message}`);
+      throw err;
+    }
   }
 
   private async pollForDownloadUrl(docId: string): Promise<string> {
@@ -138,18 +146,31 @@ export class CsatReportSchedulerService {
     const fileName = `csat_report_${Date.now()}.csv`;
     const destination = path.resolve('./uploads', fileName);
 
-    const response = await axios({
-      method: 'GET',
-      url: url,
-      responseType: 'stream',
-    });
+    try {
+      const response = await axios({
+        method: 'GET',
+        url: url,
+        responseType: 'stream',
+        timeout: 60000, // 60 detik timeout untuk download
+      });
 
-    const writer = fs.createWriteStream(destination);
-    response.data.pipe(writer);
+      const writer = fs.createWriteStream(destination);
+      response.data.pipe(writer);
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', () => resolve(destination));
-      writer.on('error', reject);
-    });
+      return new Promise((resolve, reject) => {
+        writer.on('finish', () => resolve(destination));
+        writer.on('error', (err) => {
+          this.logger.error(`File write error: ${err.message}`);
+          reject(err);
+        });
+        response.data.on('error', (err: any) => {
+          this.logger.error(`Stream error during download: ${err.message}`);
+          reject(err);
+        });
+      });
+    } catch (err: any) {
+      this.logger.error(`downloadFile failed: ${err.message}`);
+      throw err;
+    }
   }
 }

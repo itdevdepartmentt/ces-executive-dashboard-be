@@ -26,6 +26,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import Keyv from 'keyv';
 import { createKeyv } from '@keyv/redis';
 import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconciliation.module';
+import { QaProductivityModule } from './modules/qa-productivity/qa-productivity.module';
 
 @Module({
   imports: [
@@ -59,8 +60,14 @@ import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconcili
             enableReadyCheck: false,
           }
         : {
-            host: process.env.REDIS_HOST,
-            port: Number(process.env.REDIS_PORT),
+            host: process.env.REDIS_HOST || 'localhost',
+            port: Number(process.env.REDIS_PORT) || 6379,
+            maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+            retryStrategy: (times: number) => {
+              // Retry after increasing delays, up to 30 seconds
+              return Math.min(times * 1000, 30000);
+            },
           },
     }),
     HttpModule,
@@ -87,6 +94,7 @@ import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconcili
     SurveyModule,
     QaModule,
     QaReconciliationModule,
+    QaProductivityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

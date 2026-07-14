@@ -1,7 +1,7 @@
 // ticket.processor.ts
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import axios from 'axios';
+import { axiosPostWithRetry } from '../utils/axios-retry.util';
 import { PrismaService } from 'prisma/prisma.service';
 import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
 import { calculateOcaFcrRealisasi } from '../utils/fcr-realisasi.utils';
@@ -15,7 +15,7 @@ import { OcaUpsertService } from '../repository/oca-upsert.service';
 import { Logger } from '@nestjs/common';
 import { ExcelUtils } from '../excel-utils.helper';
 
-@Processor('ticket-processing')
+@Processor('ticket-processing', { concurrency: 1 })
 export class DailyOcaTicketProcessor extends WorkerHost {
   private readonly logger = new Logger(DailyOcaTicketProcessor.name);
   constructor(
@@ -63,139 +63,150 @@ export class DailyOcaTicketProcessor extends WorkerHost {
 
     this.logger.log(`Processing batch of ${tickets.length} tickets...`); // 1. Fetch Activity History
 
-    // 2. Process all tickets in the batch concurrently
-    // We use Promise.all to hit the API for all 20 tickets in parallel (much faster)
-    const processPromises = tickets.map(async (baseTicket) => {
-      try {
-        // A. Hit API
-        const activityRes = await axios.post(
-          'https://webapigw.ocatelkom.co.id/oca-interaction/ticketing/list-activity',
-          { ticket_id: baseTicket.ticket_id },
-          {
-            auth: {
-              username: 'tsel-app-connectivity',
-              password: '@tsel198xMu918230pp',
-            },
-          },
-        );
-
-        // B. Logic (Reconstruct & Map)
-        const activities = activityRes.data.results || [];
-        const customFields = this.extractLatestCustomFields(activities);
-
-        // Pass maps into mapToDomainModel if needed, or use them here
-        let mappedData = this.mapToDomainModel(baseTicket, customFields);
-
-        // C. Calculations (Using the Maps we fetched once)
-        const classification = classifyTicket(mappedData);
-
-        const iotValue = mappedData.iot?.trim()
-          ? mappedData.iot.trim().toLowerCase()
-          : '-';
-
-        const compositeFcrKey =
-          `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${iotValue}`
-            .trim()
-            .toLowerCase();
-
-        const jumlahMsisdn = ExcelUtils.parseSafeInt(mappedData.jumlahMsisdn);
-        let fcrStatus;
-        if (!jumlahMsisdn || jumlahMsisdn <= 10) {
-          if (mappedData.detailCategory === '-' && mappedData.iot === '-') {
-            fcrStatus = true;
+    // 2. Process all tickets in the batch in chunks to prevent ECONNRESET
+    const processedResults: any[] = [];
+    const chunkSize = 5; // Process 5 tickets at a time
+    
+    for (let i = 0; i < tickets.length; i += chunkSize) {
+      const chunk = tickets.slice(i, i + chunkSize);
+      
+      const chunkPromises = chunk.map(async (baseTicket) => {
+        try {
+          // A. Hit API
+          const activityRes = await axiosPostWithRetry(
+            'https://webapigw.ocatelkom.co.id/oca-interaction/ticketing/list-activity',
+            { ticket_id: baseTicket.ticket_id },
+            {
+              auth: {
+                username: 'tsel-app-connectivity',
+                password: '@tsel198xMu918230pp',
+              },
+            }
+          );
+  
+          // B. Logic (Reconstruct & Map)
+          const activities = activityRes.data.results || [];
+          const customFields = this.extractLatestCustomFields(activities);
+  
+          // Pass maps into mapToDomainModel if needed, or use them here
+          let mappedData = this.mapToDomainModel(baseTicket, customFields);
+  
+          // C. Calculations (Using the Maps we fetched once)
+          const classification = classifyTicket(mappedData);
+  
+          const iotValue = mappedData.iot?.trim()
+            ? mappedData.iot.trim().toLowerCase()
+            : '-';
+  
+          const compositeFcrKey =
+            `${mappedData.category?.trim() || ''}_${mappedData.subCategory?.trim() || ''}_${mappedData.detailCategory?.trim() || ''}_${iotValue}`
+              .trim()
+              .toLowerCase();
+  
+          const jumlahMsisdn = ExcelUtils.parseSafeInt(mappedData.jumlahMsisdn);
+          let fcrStatus;
+          if (!jumlahMsisdn || jumlahMsisdn <= 10) {
+            if (mappedData.detailCategory === '-' && mappedData.iot === '-') {
+              fcrStatus = true;
+            } else {
+              const isFcrSatuan = fcrSatuanMap.get(compositeFcrKey) || false;
+              fcrStatus = isFcrSatuan;
+            }
           } else {
-            const isFcrSatuan = fcrSatuanMap.get(compositeFcrKey) || false;
-            fcrStatus = isFcrSatuan;
+            const isFcrMassal = fcrMassalMap.get(compositeFcrKey) == 'FCR';
+            fcrStatus = isFcrMassal;
           }
-        } else {
-          const isFcrMassal = fcrMassalMap.get(compositeFcrKey) == 'FCR';
-          fcrStatus = isFcrMassal;
-        }
-
-        let derivedProduct = kipMap.get(compositeFcrKey || '-');
-
-        if (!derivedProduct) {
-          const agentName = mappedData.assignee || mappedData.reporter || '';
-          if (/TC|Engineer/i.test(
-            agentMap.get(agentName.trim().toLowerCase()) || '',
-          )) {
-            derivedProduct = 'SOLUTION';
-            fcrStatus = true;
-          } else {
-            derivedProduct = 'CONNECTIVITY';
+  
+          let derivedProduct = kipMap.get(compositeFcrKey || '-');
+  
+          if (!derivedProduct) {
+            const agentName = mappedData.assignee || mappedData.reporter || '';
+            if (/TC|Engineer/i.test(
+              agentMap.get(agentName.trim().toLowerCase()) || '',
+            )) {
+              derivedProduct = 'SOLUTION';
+              fcrStatus = true;
+            } else {
+              derivedProduct = 'CONNECTIVITY';
+            }
           }
+  
+          const channel = determineChannel(mappedData, agentMap);
+          if (channel === 'callcenter') {
+            fcrStatus = false;
+          }
+  
+          const rawNamaPerusahaan = mappedData.namaPerusahaan;
+          const normalizedNamaPerusahaan =
+            typeof rawNamaPerusahaan === 'string'
+              ? rawNamaPerusahaan.trim().toLowerCase()
+              : '';
+          const derivedAccountCategory = accountMap.get(
+            normalizedNamaPerusahaan || '',
+          );
+  
+          const ticketSubject = mappedData.ticketSubject || '';
+          const isVip = VIP_REGEX.test(ticketSubject);
+  
+          // --- RUN SLA CALCULATION ---
+          // Now we pass the 'derivedProduct' as 'Kolom BF'
+          const slaStatus = classification.isValid
+            ? calculateSlaStatus({
+                product: derivedProduct,
+                ticketCreated: mappedData.ticketCreated,
+                resolveTime: mappedData.resolveTime,
+              })
+            : false;
+  
+          const typeEskalasi = determineEskalasi({
+            'ID Remedy_NO': mappedData.idRemedyNo,
+            'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
+          });
+  
+          const fcrRealisasiResult = calculateOcaFcrRealisasi({
+            eskalasiAm: mappedData.eskalasiId,
+            description: mappedData.description,
+            idRemedyNo: mappedData.idRemedyNo,
+            reasonOsl: mappedData.reasonOsl,
+            countInboundMessage: ExcelUtils.parseSafeInt(mappedData.countInboundMessage) || 0,
+            inSla: slaStatus,
+            msisdn: mappedData.jumlahMsisdn || '',
+            subCategory: mappedData.subCategory || '',
+            detailCategory: mappedData.detailCategory || '',
+          });
+  
+          // D. Return Final Object
+          return {
+            ...mappedData,
+            channel: channel,
+            validationStatus: classification.status,
+            statusTiket: classification.isValid,
+            product: derivedProduct?.toUpperCase() || '-',
+            sla: slaStatus,
+            fcr: fcrStatus,
+            isFcrRealisasi: fcrRealisasiResult.isFcrRealisasi,
+            eskalasiRealisasiTarget: fcrRealisasiResult.eskalasiRealisasiTarget,
+            eskalasi: typeEskalasi,
+            isPareto: derivedAccountCategory === 'P1' ? true : false,
+            isVip: isVip,
+          };
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to process ticket ${baseTicket.ticket_id}: ${error.message}`,
+          );
+          return null; // Return null so we can filter it out later
         }
+      });
 
-        const channel = determineChannel(mappedData, agentMap);
-        if (channel === 'callcenter') {
-          fcrStatus = false;
-        }
-
-        const rawNamaPerusahaan = mappedData.namaPerusahaan;
-        const normalizedNamaPerusahaan =
-          typeof rawNamaPerusahaan === 'string'
-            ? rawNamaPerusahaan.trim().toLowerCase()
-            : '';
-        const derivedAccountCategory = accountMap.get(
-          normalizedNamaPerusahaan || '',
-        );
-
-        const ticketSubject = mappedData.ticketSubject || '';
-        const isVip = VIP_REGEX.test(ticketSubject);
-
-        // --- RUN SLA CALCULATION ---
-        // Now we pass the 'derivedProduct' as 'Kolom BF'
-        const slaStatus = classification.isValid
-          ? calculateSlaStatus({
-              product: derivedProduct,
-              ticketCreated: mappedData.ticketCreated,
-              resolveTime: mappedData.resolveTime,
-            })
-          : false;
-
-        const typeEskalasi = determineEskalasi({
-          'ID Remedy_NO': mappedData.idRemedyNo,
-          'Eskalasi/ID Remedy_IT/AO/EMS': mappedData.eskalasiId,
-        });
-
-        const fcrRealisasiResult = calculateOcaFcrRealisasi({
-          eskalasiAm: mappedData.eskalasiId,
-          description: mappedData.description,
-          idRemedyNo: mappedData.idRemedyNo,
-          reasonOsl: mappedData.reasonOsl,
-          countInboundMessage: ExcelUtils.parseSafeInt(mappedData.countInboundMessage) || 0,
-          inSla: slaStatus,
-          msisdn: mappedData.jumlahMsisdn || '',
-          subCategory: mappedData.subCategory || '',
-          detailCategory: mappedData.detailCategory || '',
-        });
-
-        // D. Return Final Object
-        return {
-          ...mappedData,
-          channel: channel,
-          validationStatus: classification.status,
-          statusTiket: classification.isValid,
-          product: derivedProduct?.toUpperCase() || '-',
-          sla: slaStatus,
-          fcr: fcrStatus,
-          isFcrRealisasi: fcrRealisasiResult.isFcrRealisasi,
-          eskalasiRealisasiTarget: fcrRealisasiResult.eskalasiRealisasiTarget,
-          eskalasi: typeEskalasi,
-          isPareto: derivedAccountCategory === 'P1' ? true : false,
-          isVip: isVip,
-        };
-      } catch (error) {
-        this.logger.error(
-          `Failed to process ticket ${baseTicket.ticket_id}`,
-          error,
-        );
-        return null; // Return null so we can filter it out later
+      // Wait for current chunk to finish
+      const chunkResults = await Promise.all(chunkPromises);
+      processedResults.push(...chunkResults);
+      
+      // Delay slightly between chunks to prevent server connection resets
+      if (i + chunkSize < tickets.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-    });
-
-    // Wait for all API calls to finish
-    const processedResults = await Promise.all(processPromises);
+    }
 
     // Filter out any failures (nulls)
     const validRows = processedResults.filter((row) => row !== null);

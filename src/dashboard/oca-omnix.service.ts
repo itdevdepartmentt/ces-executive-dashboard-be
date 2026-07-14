@@ -7,6 +7,53 @@ import { Prisma } from '@prisma/client';
 export class OcaOmnixService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private buildCategoryFilterQuery(filter: DashboardFilterDto, type: 'OCA' | 'OMNIX' | 'CALL') {
+    const buildInClause = (values?: string[]) => {
+      if (!values || values.length === 0) return '';
+      const escaped = values.map(v => `'${v.replace(/'/g, "''")}'`).join(', ');
+      return `IN (${escaped})`;
+    };
+
+    let query = '';
+    const catIn = buildInClause(filter.categories);
+    const subCatIn = buildInClause(filter.subCategories);
+    const detCatIn = buildInClause(filter.detailCategories);
+
+    if (type === 'OCA') {
+      if (catIn) query += ` AND "category" ${catIn}`;
+      if (subCatIn) query += ` AND "sub_category" ${subCatIn}`;
+      if (detCatIn) query += ` AND "detail_category" ${detCatIn}`;
+    } else if (type === 'OMNIX') {
+      if (catIn) query += ` AND "category" ${catIn}`;
+      if (subCatIn) query += ` AND "subCategory" ${subCatIn}`;
+      if (detCatIn) query += ` AND "detailSubCategory" ${detCatIn}`;
+    } else if (type === 'CALL') {
+      if (catIn) query += ` AND "service" ${catIn}`;
+      if (subCatIn) query += ` AND "topic_reason_1" ${subCatIn}`;
+      if (detCatIn) query += ` AND "topic_reason_2" ${detCatIn}`;
+    }
+    return query;
+  }
+
+  private buildPrismaCategoryFilter(filter: DashboardFilterDto, type: 'OCA' | 'OMNIX' | 'CALL') {
+    const where: any = {};
+    if (filter.categories?.length) {
+      if (type === 'OCA' || type === 'OMNIX') where.category = { in: filter.categories };
+      else if (type === 'CALL') where.service = { in: filter.categories };
+    }
+    if (filter.subCategories?.length) {
+      if (type === 'OCA') where.subCategory = { in: filter.subCategories };
+      else if (type === 'OMNIX') where.subCategory = { in: filter.subCategories };
+      else if (type === 'CALL') where.topicReason1 = { in: filter.subCategories };
+    }
+    if (filter.detailCategories?.length) {
+      if (type === 'OCA') where.detailCategory = { in: filter.detailCategories };
+      else if (type === 'OMNIX') where.detailSubCategory = { in: filter.detailCategories };
+      else if (type === 'CALL') where.topicReason2 = { in: filter.detailCategories };
+    }
+    return where;
+  }
+
   async getExecutiveSummary(filter: DashboardFilterDto) {
     const isFcrColOca = filter.fcrType === 'realisasi' ? '"isFcrRealisasi"' : '"isFcr"';
     // 1. DEFINE CTE (Reusable "Virtual Table")
@@ -21,8 +68,7 @@ export class OcaOmnixService {
                 "ticket_created" as "ticket_timestamp",
                 "channel"
             FROM "RawOca"
-            -- We don't filter by date inside the CTE anymore because 
-            -- the sub-queries need different date ranges.
+            WHERE 1=1 ${this.buildCategoryFilterQuery(filter, 'OCA')}
             
             UNION ALL
 
@@ -34,6 +80,7 @@ export class OcaOmnixService {
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
             FROM "RawOmnix"
+            WHERE 1=1 ${this.buildCategoryFilterQuery(filter, 'OMNIX')}
                
             UNION ALL
             SELECT
@@ -44,6 +91,7 @@ export class OcaOmnixService {
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
             FROM "RawCall"
+            WHERE 1=1 ${this.buildCategoryFilterQuery(filter, 'CALL')}
         )
     `;
 
@@ -384,6 +432,7 @@ ORDER BY 1 ASC;
         'OCA' as "source_kip" 
       FROM "RawOca"
       WHERE "ticket_created" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'OCA'))}
 
       UNION ALL
 
@@ -402,6 +451,7 @@ ORDER BY 1 ASC;
         'OMNIX' as "source_kip"
       FROM "RawOmnix"
       WHERE "date_start_interaction" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'OMNIX'))}
     
       UNION ALL
       SELECT
@@ -418,6 +468,7 @@ ORDER BY 1 ASC;
         'CALL' as "source_kip"
       FROM "RawCall"
       WHERE "update_stamp" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'CALL'))}
     )
 
     -- 3. THE AGGREGATION (Runs on the combined result above)
@@ -605,7 +656,7 @@ ORDER BY 1 ASC;
         ${isFcrColOca} as "isFcr",
         "statusTiket"
       FROM "RawOca"
-      WHERE "channel" = $1
+      WHERE "channel" = $1 ${this.buildCategoryFilterQuery(filter, 'OCA')}
 
       UNION ALL
 
@@ -631,7 +682,7 @@ ORDER BY 1 ASC;
         ${isFcrColOca} as "isFcr",
         "statusTiket"
       FROM "RawOmnix"
-      WHERE "channel_name" = $1
+      WHERE "channel_name" = $1 ${this.buildCategoryFilterQuery(filter, 'OMNIX')}
     )
     SELECT 
       "metric_name" as name, 
@@ -676,6 +727,7 @@ ORDER BY 1 ASC;
       FROM "RawOca"
       WHERE "eskalasi" IS NOT NULL AND "eskalasi" != ''
         AND "ticket_created" BETWEEN ${startDate}::timestamp AND ${endDate}::timestamp
+        ${Prisma.raw(this.buildCategoryFilterQuery(query, 'OCA'))}
       GROUP BY "eskalasi"
     `;
 
@@ -686,6 +738,7 @@ ORDER BY 1 ASC;
         gte: new Date(startDate ? startDate : new Date()),
         lte: new Date(endDate ? endDate : new Date()),
       },
+      ...this.buildPrismaCategoryFilter(query, 'OCA'),
       OR: search
         ? [
             { ticketNumber: { contains: search, mode: 'insensitive' } },
@@ -752,6 +805,7 @@ ORDER BY 1 ASC;
                 FROM "RawOca"
                 WHERE "ticket_created" BETWEEN $1::timestamp AND $2::timestamp AND "statusTiket"
                     AND (TRIM("nama_perusahaan") <> '-' AND TRIM("nama_perusahaan") <> '' AND "nama_perusahaan" NOTNULL)
+                    ${this.buildCategoryFilterQuery(filter, 'OCA')}
 
                 UNION ALL
 
@@ -769,7 +823,7 @@ ORDER BY 1 ASC;
                 FROM "RawOmnix"
                 WHERE "date_start_interaction" BETWEEN $1::timestamp AND $2::timestamp AND "statusTiket"
                   AND (TRIM("ticket_perusahaan") <> '-' AND TRIM("ticket_perusahaan") <> '' AND "ticket_perusahaan" NOTNULL)
-
+                  ${this.buildCategoryFilterQuery(filter, 'OMNIX')}
             )
         `;
 
@@ -859,6 +913,7 @@ ORDER BY 1 ASC;
             FROM "RawOca"
             WHERE "ticket_created" BETWEEN $1::timestamp AND $2::timestamp AND "statusTiket"
               AND (TRIM("nama_perusahaan") <> '-' AND TRIM("nama_perusahaan") <> '' AND "nama_perusahaan" NOTNULL)
+              ${this.buildCategoryFilterQuery(query, 'OCA')}
             
             UNION ALL
             
@@ -870,6 +925,7 @@ ORDER BY 1 ASC;
             FROM "RawOmnix"
             WHERE "date_start_interaction" BETWEEN $1::timestamp AND $2::timestamp AND "statusTiket"
             AND (TRIM("ticket_perusahaan") <> '-' AND TRIM("ticket_perusahaan") <> '' AND "ticket_perusahaan" NOTNULL)
+            ${this.buildCategoryFilterQuery(query, 'OMNIX')}
         )
     `;
 
@@ -1027,6 +1083,7 @@ ORDER BY 1 ASC;
             WHERE "ticket_created" >= $1::timestamptz AND "ticket_created" < $2::timestamptz 
             AND "statusTiket"
             AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+            ${this.buildCategoryFilterQuery(filter, 'OCA')}
 
             
             UNION ALL
@@ -1046,6 +1103,7 @@ ORDER BY 1 ASC;
             WHERE "date_start_interaction" >= $1::timestamp AND "date_start_interaction" < $2::timestamp
             AND "statusTiket"
             AND "channel_name" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
+            ${this.buildCategoryFilterQuery(filter, 'OMNIX')}
 
         )
     `;
@@ -1176,6 +1234,7 @@ ORDER BY 1 ASC;
         gte: startDate ? new Date(startDate) : undefined,
         lte: endDate ? new Date(endDate) : undefined,
       },
+      ...this.buildPrismaCategoryFilter(query, 'OCA'),
       NOT: {
         OR: [
           { lastStatus: { startsWith: 'close', mode: 'insensitive' } },
@@ -1202,6 +1261,7 @@ ORDER BY 1 ASC;
         FROM "RawOca"
         WHERE "eskalasi" = ${eskalasi}
           AND "ticket_created" >= ${startDate}::timestamptz AND "ticket_created" < ${endDate}::timestamptz
+          ${Prisma.raw(this.buildCategoryFilterQuery(query, 'OCA'))}
       `,
 
       this.prisma.rawOca.count({ where: whereClause }),
@@ -1296,6 +1356,7 @@ ORDER BY 1 ASC;
         gte: startDate ? new Date(startDate) : undefined,
         lte: endDate ? new Date(endDate) : undefined,
       },
+      ...this.buildPrismaCategoryFilter(query, 'OCA'),
       NOT: {
         OR: [
           { lastStatus: { startsWith: 'close', mode: 'insensitive' } },
@@ -1322,6 +1383,7 @@ ORDER BY 1 ASC;
         FROM "RawOca"
         WHERE "eskalasi" = 'Billco'
           AND "ticket_created" >= ${startDate}::timestamptz AND "ticket_created" < ${endDate}::timestamptz
+          ${Prisma.raw(this.buildCategoryFilterQuery(query, 'OCA'))}
       `,
 
       this.prisma.rawOca.count({ where: whereClause }),
@@ -1391,6 +1453,7 @@ ORDER BY 1 ASC;
         gte: startDate ? new Date(startDate) : undefined,
         lte: endDate ? new Date(endDate) : undefined,
       },
+      ...this.buildPrismaCategoryFilter(query, 'OCA'),
       NOT: {
         OR: [
           { lastStatus: { startsWith: 'close', mode: 'insensitive' } },
@@ -1419,6 +1482,7 @@ ORDER BY 1 ASC;
         FROM "RawOca"
         WHERE "eskalasi" = 'IT'
           AND "ticket_created" >= ${startDate}::timestamptz AND "ticket_created" < ${endDate}::timestamptz
+          ${Prisma.raw(this.buildCategoryFilterQuery(query, 'OCA'))}
       `,
 
       this.prisma.rawOca.count({ where: whereClause }),

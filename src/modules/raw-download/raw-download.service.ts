@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 
-type ExportType = 'omnix' | 'oca' | 'call';
+type ExportType = 'omnix' | 'oca' | 'call' | 'news-log';
 
 type DownloadDateRangeQuery = {
   startDate?: string;
@@ -48,12 +48,16 @@ export class RawDownloadService {
     let page = 0;
     let hasWrittenHeader = false;
     let headers: string[] = [];
+    let globalRowNumber = 1;
 
     while (true) {
       const rows = await this.getRows(type, page * pageSize, pageSize, dateRange);
       if (!rows.length) break;
 
       for (const row of rows) {
+        if (type === 'news-log') {
+          row['No'] = globalRowNumber++;
+        }
         const formattedRow = this.omitExcludedColumns(row);
 
         if (!hasWrittenHeader) {
@@ -91,11 +95,17 @@ export class RawDownloadService {
   private getSheetName(type: ExportType): string {
     if (type === 'omnix') return 'RawOmnix';
     if (type === 'oca') return 'RawOca';
+    if (type === 'news-log') return 'NewsLog';
     return 'RawCall';
   }
 
   private async getRows(type: ExportType, skip: number, take: number, dateRange: DateRange) {
     console.log(`Fetching ${type} data with skip=${skip}, take=${take}, dateRange=${JSON.stringify(dateRange)}`);
+    
+    if (type === 'news-log') {
+      return this.getNewsLogRows(dateRange, skip, take);
+    }
+    
     const where = this.buildWhereByType(type, dateRange);
 
     if (type === 'omnix') {
@@ -107,6 +117,50 @@ export class RawDownloadService {
     }
 
     return this.prisma.rawCall.findMany({ where, orderBy: { id: 'asc' }, skip, take });
+  }
+
+  private async getNewsLogRows(dateRange: DateRange, skip: number, take: number) {
+    const { startDate, endDate } = dateRange;
+    
+    let startDateParam = startDate || new Date(0);
+    let endDateParam = endDate || new Date('9999-12-31T23:59:59.999Z');
+
+    const result: any[] = await this.prisma.$queryRaw`
+      SELECT 
+          category AS "Kategori",
+          title AS "Nama Artikel",
+          COALESCE("authorName", 'Sistem / Tidak Diketahui') AS "User",
+          "Action" AS "Action",
+          TO_CHAR(waktu_aksi, 'DD/MM/YYYY HH24:MI:SS') AS "dd/mm/yyyy hh:mm:ss"
+      FROM (
+          SELECT 
+              n.title,
+              n.category,
+              n."authorName",
+              'CREATE' AS "Action",
+              n."createdAt" AS waktu_aksi
+          FROM "News" n
+          WHERE n."createdAt" >= ${startDateParam}
+            AND n."createdAt" <= ${endDateParam}
+          
+          UNION ALL
+          
+          SELECT 
+              n.title,
+              n.category,
+              n."authorName",
+              'LAST UPDATE' AS "Action",
+              n."updatedAt" AS waktu_aksi
+          FROM "News" n
+          WHERE n."updatedAt" >= ${startDateParam}
+            AND n."updatedAt" <= ${endDateParam}
+            AND n."updatedAt" > n."createdAt"
+      ) data_gabungan
+      ORDER BY waktu_aksi DESC
+      LIMIT ${take} OFFSET ${skip}
+    `;
+    
+    return result;
   }
 
   private parseDateRange(dateRangeQuery?: DownloadDateRangeQuery): DateRange {

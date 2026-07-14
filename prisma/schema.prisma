@@ -511,7 +511,6 @@ model QaFormTapping {
   perusahaan            String
   customerRequests      String
   agentResponse         String
-  handlingTime          String?  @map("handling_time")
   scoreValiditas        Int      @default(0)
   scoreServiceLevel     Int      @default(0)
   scoreKalimat          Int      @default(0)
@@ -519,6 +518,7 @@ model QaFormTapping {
   scoreDokumentasi      Int      @default(0)
   status                String   @default("Sample")
   solusi                String   @default("")
+  komitmen              String   @default("")
   notes                 String   @default("")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -527,6 +527,11 @@ model QaFormTapping {
   peak                  Int      @default(3)
   subParameterPenilaian String   @default("") @map("sub_parameter_penilaian")
   teamLeader            String   @default("") @map("team_leader")
+  handlingTime          String?  @map("handling_time")
+  tagging               String   @default("")
+  pauseReasons          Json     @default("[]") @map("pause_reasons")
+  startTime             DateTime? @map("start_time")
+  submitTime            DateTime? @map("submit_time")
 
   @@map("qa_form_tapping")
 }
@@ -545,11 +550,51 @@ model QaTicket {
   perusahaan       String
   customerRequests String
   agentResponse    String
-  handlingTime     String?  @map("handling_time")
   tapper           String   @default("")
   teamLeader       String   @default("") @map("team_leader")
+  handlingTime     String?  @map("handling_time")
 
   @@map("qa_ticket")
+}
+
+model QaReconciliation {
+  id                        String   @id @default(uuid())
+  qaFormTappingId           String   @map("qa_form_tapping_id")
+  tlName                    String   @map("tl_name")
+  qcName                    String   @map("qc_name")
+  reason                    String
+  status                    String   @default("PENDING")
+  proposedScoreValiditas    Int?
+  proposedScoreServiceLevel Int?
+  proposedScoreKalimat      Int?
+  proposedScoreResponTime   Int?
+  proposedScoreDokumentasi  Int?
+  oldScoreValiditas         Int?
+  oldScoreServiceLevel      Int?
+  oldScoreKalimat           Int?
+  oldScoreResponTime        Int?
+  oldScoreDokumentasi       Int?
+  qcResponseNotes           String?  @map("qc_response_notes")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  discussions               Json     @default("[]")
+
+  @@map("qa_reconciliation")
+}
+
+model QaTargetSetting {
+  id        String   @id @default(uuid())
+  updatedAt DateTime @updatedAt
+  daily     Int      @default(0)
+  monthly   Int      @default(0)
+  name      String   @default("")
+  type      String   @default("")
+  peak1     Int      @default(0)
+  peak2     Int      @default(0)
+  peak3     Int      @default(0)
+
+  @@unique([name, type])
+  @@map("qa_target_setting")
 }
 
 enum UserRole {
@@ -557,32 +602,5 @@ enum UserRole {
   ADMIN
   QC
   TL
-}
-
-model QaReconciliation {
-  id              String   @id @default(uuid())
-  qaFormTappingId String   @map("qa_form_tapping_id")
-  tlName          String   @map("tl_name")
-  qcName          String   @map("qc_name")
-  reason          String
-  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  
-  proposedScoreValiditas    Int?
-  proposedScoreServiceLevel Int?
-  proposedScoreKalimat      Int?
-  proposedScoreResponTime   Int?
-  proposedScoreDokumentasi  Int?
-  
-  oldScoreValiditas         Int?
-  oldScoreServiceLevel      Int?
-  oldScoreKalimat           Int?
-  oldScoreResponTime        Int?
-  oldScoreDokumentasi       Int?
-
-  qcResponseNotes String?  @map("qc_response_notes")
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@map("qa_reconciliation")
+  TL_QC
 }

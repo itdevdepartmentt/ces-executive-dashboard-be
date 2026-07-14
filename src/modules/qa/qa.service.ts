@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -563,7 +563,7 @@ export class QaService {
   }
   
   // --- QA Score Dashboard & Detail Tapping ---
-  async getQaScoreDashboard(year?: string, month?: string, agent?: string, peak?: string) {
+  async getQaScoreDashboard(year?: string, month?: string, agent?: string, peak?: string, user?: any) {
     const whereClause: any = {};
 
     // Date filtering using createdAt
@@ -603,6 +603,7 @@ export class QaService {
         subParameterPenilaian: true,
         peak: true,
         createdAt: true,
+        komitmen: true,
         createdDate: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -662,13 +663,19 @@ export class QaService {
         row.scoreKalimat < 10 || row.scoreResponTime < 15 || row.scoreDokumentasi < 15;
       if (isNC) {
         ncDetails.push({
+          id: row.id,
           agent: row.agent,
+          teamLeader: row.teamLeader,
           parameterPenilaian: row.parameterPenilaian,
           subParameterPenilaian: row.subParameterPenilaian,
           notes: row.notes,
           createdAt: row.createdAt,
           peak: row.peak,
           idTiket: row.idTiket,
+          score: totalScore,
+          komitmen: (user?.role === 'USER' && user?.name !== row.agent) 
+            ? (row.komitmen ? '[Komitmen Disembunyikan]' : null) 
+            : row.komitmen,
         });
       }
     }
@@ -729,14 +736,16 @@ export class QaService {
 
   async getDetailTapping(
     page = 1, limit = 100, year?: string, month?: string,
-    agent?: string, peak?: string, search?: string, filters?: string, user?: any,
+    agent?: string, peak?: string, search?: string, filters?: string,
+    sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', user?: any,
   ) {
     const skip = (page - 1) * limit;
     const whereClause: any = {};
     const andConditions: any[] = [];
-
-    // No role-based filtering for Detail Tapping as requested: all users should see all data.
-
+    // Role-based filtering: Agents can only see their own detail tapping
+    if (user?.role === 'USER') {
+      whereClause.agent = user.name;
+    }
     if (year) {
       const y = parseInt(year);
       const startDate = new Date(y, month ? parseInt(month) - 1 : 0, 1);
@@ -746,7 +755,7 @@ export class QaService {
       whereClause.createdAt = { gte: startDate, lt: endDate };
     }
 
-    if (agent) {
+    if (agent && user?.role !== 'USER') {
       whereClause.agent = agent;
     }
 
@@ -1035,5 +1044,22 @@ export class QaService {
       message: successMsg,
       count: newTicketsToInsert.length
     };
+  }
+  async updateKomitmen(id: string, komitmen: string, user: any) {
+    const record = await this.prisma.qaFormTapping.findUnique({
+      where: { id },
+    });
+    if (!record) throw new NotFoundException('Data tidak ditemukan');
+
+    // Only the agent themselves can update their komitmen
+    // Wait, let's allow ADMIN, TL, QC as well in case they need to fix it?
+    if (user.role === 'USER' && record.agent !== user.name) {
+      throw new UnauthorizedException('Anda tidak berhak mengisi komitmen untuk data ini');
+    }
+
+    return this.prisma.qaFormTapping.update({
+      where: { id },
+      data: { komitmen },
+    });
   }
 }

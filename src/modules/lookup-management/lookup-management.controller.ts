@@ -31,7 +31,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @Controller('lookup-management')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'QC')
+@Roles('ADMIN', 'QC', 'TL_QC')
 export class LookupManagementController {
   constructor(private readonly service: LookupManagementService) {}
 

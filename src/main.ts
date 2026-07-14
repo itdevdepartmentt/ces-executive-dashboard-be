@@ -5,6 +5,14 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express'; // Import this!
 
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: true,
@@ -56,5 +64,18 @@ async function bootstrap() {
   });
 
   await app.listen(process.env.PORT ?? 3000);
+
+  // Handle abrupt client disconnections (ECONNRESET) at HTTP server level
+  // This prevents the backend from crashing when browsers close connections
+  const server = app.getHttpServer();
+  server.on('connection', (socket: any) => {
+    socket.on('error', (err: any) => {
+      if (err.code === 'ECONNRESET') {
+        // Browser/client disconnected abruptly - this is normal, just ignore
+        return;
+      }
+      console.error('Socket error:', err);
+    });
+  });
 }
 bootstrap();

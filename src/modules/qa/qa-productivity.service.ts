@@ -1,0 +1,331 @@
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { PrismaService } from 'prisma/prisma.service';
+import * as ExcelJS from 'exceljs';
+
+@Injectable()
+export class QaProductivityService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getDashboard(month: number, year: number, dateStr: string, user?: any) {
+    // Determine date range for month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 1);
+
+    // Determine target day
+    const targetDate = new Date(dateStr);
+    const targetDateStart = new Date(targetDate);
+    targetDateStart.setHours(0, 0, 0, 0);
+    const targetDateEnd = new Date(targetDate);
+    targetDateEnd.setHours(23, 59, 59, 999);
+
+    // Get QC and Agent targets
+    const targetSettings = await this.prisma.qaTargetSetting.findMany();
+    const qcTargets = new Map(targetSettings.filter(t => t.type === 'QC').map(t => [t.name, t]));
+    const agentTargets = new Map(targetSettings.filter(t => t.type === 'AGENT').map(t => [t.name, t]));
+
+    // Get Form Tappings for the month
+    const monthlyTappings = await this.prisma.qaFormTapping.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
+        }
+      },
+      select: {
+        id: true,
+        tapper: true,
+        agent: true,
+        peak: true,
+        createdAt: true,
+      }
+    });
+
+    // Get agent mapping (to group by Tapper)
+    // First, try from LookupAgent
+    const lookupAgents = await this.prisma.lookupAgent.findMany({
+      where: { tapper: { not: null } }
+    });
+
+    const qcAgentMap = new Map<string, Set<string>>();
+    
+    // Add from LookupAgent
+    for (const agent of lookupAgents) {
+      if (agent.tapper && agent.tapper.trim() !== '' && agent.namaAgent) {
+        if (!qcAgentMap.has(agent.tapper)) {
+          qcAgentMap.set(agent.tapper, new Set());
+        }
+        qcAgentMap.get(agent.tapper)!.add(agent.namaAgent);
+      }
+    }
+
+    // Add from actual Tapping data (in case LookupAgent is incomplete)
+    for (const tapping of monthlyTappings) {
+      if (tapping.tapper && tapping.tapper.trim() !== '' && tapping.agent) {
+        if (!qcAgentMap.has(tapping.tapper)) {
+          qcAgentMap.set(tapping.tapper, new Set());
+        }
+        qcAgentMap.get(tapping.tapper)!.add(tapping.agent);
+      }
+    }
+
+    // Build QC Productivity
+    const qcProductivity: any[] = [];
+    for (const [tapper, agentSet] of qcAgentMap.entries()) {
+      const agents = Array.from(agentSet);
+      const qcTarget = qcTargets.get(tapper) || { daily: 0, peak1: 0, peak2: 0, peak3: 0, monthly: 0 };
+      
+      const tappings = monthlyTappings.filter(t => t.tapper === tapper);
+      const dailyTappings = tappings.filter(t => t.createdAt >= targetDateStart && t.createdAt <= targetDateEnd);
+
+      const p1 = tappings.filter(t => t.peak === 1).length;
+      const p2 = tappings.filter(t => t.peak === 2).length;
+      const p3 = tappings.filter(t => t.peak === 3).length;
+
+      qcProductivity.push({
+        tapper,
+        totalAgent: agents.length,
+        agentNames: agents.join(', '),
+        
+        dailyTarget: qcTarget.daily,
+        dailyRealization: dailyTappings.length,
+        dailyRemaining: qcTarget.daily - dailyTappings.length,
+        
+        peak1Target: qcTarget.peak1 || 0,
+        peak1Realization: p1,
+        peak1Remaining: (qcTarget.peak1 || 0) - p1,
+
+        peak2Target: qcTarget.peak2 || 0,
+        peak2Realization: p2,
+        peak2Remaining: (qcTarget.peak2 || 0) - p2,
+
+        peak3Target: qcTarget.peak3 || 0,
+        peak3Realization: p3,
+        peak3Remaining: (qcTarget.peak3 || 0) - p3,
+
+        monthlyTarget: qcTarget.monthly,
+        monthlyRealization: tappings.length,
+        monthlyRemaining: qcTarget.monthly - tappings.length,
+      });
+    }
+
+    // Build Agent Performance
+    const agentPerformance: any[] = [];
+    
+    // Get all unique agents from both sources
+    const allAgentsSet = new Set<string>();
+    lookupAgents.forEach(a => { if (a.namaAgent) allAgentsSet.add(a.namaAgent); });
+    monthlyTappings.forEach(t => { if (t.agent) allAgentsSet.add(t.agent); });
+    
+    const allAgents = Array.from(allAgentsSet);
+    
+    for (const agent of allAgents) {
+      const aTarget = agentTargets.get(agent) || { peak1: 0, peak2: 0, peak3: 0, monthly: 0 };
+      const tappings = monthlyTappings.filter(t => t.agent === agent);
+      
+      // Skip agents with 0 tappings if they are not specifically targeted to avoid clutter?
+      // Actually, let's include them if they have tappings or if they exist in mapping
+      if (tappings.length === 0 && !agentTargets.has(agent)) {
+         continue; // Only show agents that have either tapping activity or a defined target
+      }
+      
+      const p1 = tappings.filter(t => t.peak === 1).length;
+      const p2 = tappings.filter(t => t.peak === 2).length;
+      const p3 = tappings.filter(t => t.peak === 3).length;
+
+      // Find the tapper for this agent from either tapping data or lookup
+      const tapperForAgent = tappings.find(t => t.tapper)?.tapper || lookupAgents.find(a => a.namaAgent === agent)?.tapper || 'Unknown Tapper';
+
+      agentPerformance.push({
+        agent,
+        tapper: tapperForAgent,
+        peak1Target: aTarget.peak1 || 0,
+        peak1Realization: p1,
+        peak1Remaining: (aTarget.peak1 || 0) - p1,
+
+        peak2Target: aTarget.peak2 || 0,
+        peak2Realization: p2,
+        peak2Remaining: (aTarget.peak2 || 0) - p2,
+
+        peak3Target: aTarget.peak3 || 0,
+        peak3Realization: p3,
+        peak3Remaining: (aTarget.peak3 || 0) - p3,
+
+        monthlyTarget: aTarget.monthly,
+        monthlyRealization: tappings.length,
+        monthlyRemaining: aTarget.monthly - tappings.length,
+      });
+    }
+
+    // Sort qcProductivity and agentPerformance
+    qcProductivity.sort((a, b) => a.tapper.localeCompare(b.tapper));
+    agentPerformance.sort((a, b) => a.agent.localeCompare(b.agent));
+
+    // Role-based filtering: QC only sees their own data
+    let filteredQcProductivity = qcProductivity;
+    let filteredAgentPerformance = agentPerformance;
+
+    if (user && user.role === 'QC') {
+      // QC can only see their own productivity
+      filteredQcProductivity = qcProductivity.filter(qc => qc.tapper === user.name);
+      // QC can only see agents assigned to them
+      const ownAgentNames = new Set<string>();
+      filteredQcProductivity.forEach(qc => {
+        qc.agentNames.split(', ').forEach((name: string) => {
+          if (name.trim()) ownAgentNames.add(name.trim());
+        });
+      });
+      filteredAgentPerformance = agentPerformance.filter(ap => ownAgentNames.has(ap.agent));
+    }
+    // TL_QC and ADMIN see all data (no filter needed)
+
+    // Realtime overview (placeholder logic for now, using daily totals)
+    const dailyTotal = monthlyTappings.filter(t => t.createdAt >= targetDateStart && t.createdAt <= targetDateEnd).length;
+    let totalQcDailyTarget = 0;
+    qcTargets.forEach(t => { totalQcDailyTarget += t.daily; });
+
+    const realtimeOverview = {
+      totalEksekutor: dailyTotal,
+      targetEksekutor: Math.floor(totalQcDailyTarget * 0.8), // e.g. 80% as shown in UI
+      totalAll: dailyTotal,
+      targetAll: totalQcDailyTarget,
+    };
+
+    return {
+      qcProductivity: filteredQcProductivity,
+      agentPerformance: filteredAgentPerformance,
+      realtimeOverview
+    };
+  }
+
+  async getSettings() {
+    const settings = await this.prisma.qaTargetSetting.findMany();
+    
+    const lookupAgents = await this.prisma.lookupAgent.findMany({
+      where: { tapper: { not: null } }
+    });
+    
+    // Also fetch distinct QCs and Agents from QaFormTapping so we don't miss any if LookupAgent is empty
+    const tappings = await this.prisma.qaFormTapping.findMany({
+      select: { tapper: true, agent: true }
+    });
+    
+    const allQcs = new Set<string>();
+    const allAgents = new Set<string>();
+    
+    lookupAgents.forEach(a => {
+      if (a.tapper && a.tapper.trim() !== '') allQcs.add(a.tapper);
+      if (a.namaAgent && a.namaAgent.trim() !== '') allAgents.add(a.namaAgent);
+    });
+    
+    tappings.forEach(t => {
+      if (t.tapper && t.tapper.trim() !== '') allQcs.add(t.tapper);
+      if (t.agent && t.agent.trim() !== '') allAgents.add(t.agent);
+    });
+    
+    const uniqueQcs = Array.from(allQcs).sort();
+    const uniqueAgents = Array.from(allAgents).sort();
+
+    const qcSettingsMap = new Map(settings.filter(s => s.type === 'QC').map(s => [s.name, s]));
+    const agentSettingsMap = new Map(settings.filter(s => s.type === 'AGENT').map(s => [s.name, s]));
+
+    const qcs = uniqueQcs.map(qc => {
+      const s = qcSettingsMap.get(qc);
+      return {
+        name: qc,
+        daily: s?.daily || 0,
+        peak1: s?.peak1 || 0,
+        peak2: s?.peak2 || 0,
+        peak3: s?.peak3 || 0,
+        monthly: s?.monthly || 0,
+      };
+    });
+
+    const agents = uniqueAgents.map(ag => {
+      const s = agentSettingsMap.get(ag);
+      return {
+        name: ag,
+        peak1: s?.peak1 || 0,
+        peak2: s?.peak2 || 0,
+        peak3: s?.peak3 || 0,
+        monthly: s?.monthly || 0,
+      };
+    });
+
+    return { qcs, agents };
+  }
+
+  async saveSettings(data: { qcs: any[], agents: any[] }) {
+    const { qcs, agents } = data;
+    
+    const transactions: any[] = [];
+    
+    for (const qc of qcs) {
+      transactions.push(
+        this.prisma.qaTargetSetting.upsert({
+          where: { name_type: { name: qc.name, type: 'QC' } },
+          update: { daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) },
+          create: { name: qc.name, type: 'QC', daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) }
+        })
+      );
+    }
+
+    for (const ag of agents) {
+      transactions.push(
+        this.prisma.qaTargetSetting.upsert({
+          where: { name_type: { name: ag.name, type: 'AGENT' } },
+          update: { peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly) },
+          create: { name: ag.name, type: 'AGENT', peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly), daily: 0 }
+        })
+      );
+    }
+
+    await this.prisma.$transaction(transactions);
+    return { success: true };
+  }
+
+  async parseExcelSettings(file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File is required');
+    
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file.buffer as any);
+    const ws = workbook.worksheets[0];
+    
+    const parsedAgents: any[] = [];
+    const parsedQcs: any[] = [];
+    
+    ws.eachRow((row, rowNumber) => {
+      if (rowNumber > 2) { // Skip headers
+        // Columns (1-indexed based on exceljs)
+        // 1: NO, 2: NAMA AGENT, 3: GROUPING, 4: LOS, 5: GENDER, 6: TEAM LEADER, 7: TAPPER, 8: NAMA OCA, 9: Jumlah Sample, 10: Peak 1, 11: Peak 2, 12: Peak 3
+        const agentName = row.getCell(8).value || row.getCell(2).value; // Try NAMA OCA first (Col 8), then NAMA AGENT (Col 2)
+        const qcName = row.getCell(7).value; // TAPPER (Col 7)
+        
+        const peak1 = row.getCell(10).value; // Peak 1 (Col 10)
+        const peak2 = row.getCell(11).value; // Peak 2 (Col 11)
+        const peak3 = row.getCell(12).value; // Peak 3 (Col 12)
+        const daily = row.getCell(9).value; // Jumlah Sample (Col 9)
+        
+        if (agentName) {
+          parsedAgents.push({
+            name: agentName.toString().trim(),
+            peak1: Number(peak1) || 0,
+            peak2: Number(peak2) || 0,
+            peak3: Number(peak3) || 0,
+          });
+        }
+        
+        if (qcName && daily !== null && daily !== undefined) {
+          parsedQcs.push({
+            name: qcName.toString().trim(),
+            daily: Number(daily) || 0,
+          });
+        }
+      }
+    });
+    
+    // Deduplicate QCs in case multiple agents have the same QC
+    const uniqueQcs = Array.from(new Map(parsedQcs.map(item => [item.name, item])).values());
+    
+    return { parsedAgents, parsedQcs: uniqueQcs };
+  }
+}

@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import axios from 'axios';
+import { axiosPostWithRetry } from '../utils/axios-retry.util';
 import moment from 'moment';
 import { PrismaService } from 'prisma/prisma.service';
 
@@ -33,7 +33,7 @@ export class OcaTicketSchedulerService {
       try {
         // hasMore = false;
         // 2. Hit the List API
-        const response = await axios.post(
+        const response = await axiosPostWithRetry(
         'https://webapigw.ocatelkom.co.id/oca-interaction/ticketing/get-list',
         {
           agent_id: '621464b818b240212019132c',
@@ -52,7 +52,7 @@ export class OcaTicketSchedulerService {
             //   values: ['form']
             // }
           ],
-          limit: 500, // Increase limit for batching
+          limit: 100, // Decrease limit to 100 to avoid timeouts/ECONNRESET
           page: page,
           search: {
             key: '',
@@ -87,22 +87,23 @@ export class OcaTicketSchedulerService {
       // 3. Push to Queue
 
       if (ticketsToProcess.length > 0) {
-        // 2. Push the WHOLE BATCH to the queue as ONE job
-        // Generate a job ID based on the first+last ticket to avoid duplicates if needed
-        const batchId = `batch-${page}-${ticketsToProcess[0].ticket_id}-${moment().unix()}`;
+        // Chunk tickets to avoid massive Redis payloads which cause ioredis ECONNABORTED
+        const batchChunkSize = 10;
+        for (let i = 0; i < ticketsToProcess.length; i += batchChunkSize) {
+          const chunk = ticketsToProcess.slice(i, i + batchChunkSize);
+          const chunkId = `batch-${page}-${chunk[0].ticket_id}-${moment().unix()}`;
 
-        const job = await this.ticketQueue.add(
-          'process-batch-tickets', // New job name
-          {
-            tickets: ticketsToProcess, // Payload is an ARRAY now
-          },
-          { jobId: batchId },
-        );
+          const job = await this.ticketQueue.add(
+            'process-batch-tickets',
+            { tickets: chunk },
+            { jobId: chunkId },
+          );
 
-        this.logger.log(
-          `Queued batch page ${page} with ${ticketsToProcess.length} tickets, jobId: ${job.id}`,
-        );
-        lastJob = job?.id ?? '';
+          this.logger.log(
+            `Queued batch page ${page} (chunk ${i / batchChunkSize + 1}) with ${chunk.length} tickets, jobId: ${job.id}`,
+          );
+          lastJob = job?.id ?? '';
+        }
       }
 
       // Pagination Logic

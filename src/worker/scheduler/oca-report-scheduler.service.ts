@@ -17,18 +17,21 @@ export class OcaReportSchedulerService {
   @Cron('0 2 * * *', { timeZone: 'Asia/Jakarta' })
   async handleScheduledReport() {
     this.logger.log('Starting scheduled OCA Report process...');
+    try {
+      // 1. Calculate Date Ranges (Today-1 and 7 days before)
+      const endDate = moment()
+        .tz('Asia/Jakarta')
+        .subtract(1, 'days')
+        .format('YYYY-MM-DD');
+      const startDate = moment()
+        .tz('Asia/Jakarta')
+        .subtract(8, 'days')
+        .format('YYYY-MM-DD');
 
-    // 1. Calculate Date Ranges (Today-1 and 7 days before)
-    const endDate = moment()
-      .tz('Asia/Jakarta')
-      .subtract(1, 'days')
-      .format('YYYY-MM-DD');
-    const startDate = moment()
-      .tz('Asia/Jakarta')
-      .subtract(8, 'days')
-      .format('YYYY-MM-DD');
-
-    return this.processOcaReport(startDate, endDate);
+      return await this.processOcaReport(startDate, endDate);
+    } catch (err: any) {
+      this.logger.error(`OCA Report Scheduler top-level error: ${err.message}`);
+    }
   }
 
   async processOcaReport(startDate: string, endDate: string) {
@@ -193,18 +196,31 @@ export class OcaReportSchedulerService {
     const fileName = `oca_report_${Date.now()}.csv`;
     const destination = path.resolve('./uploads', fileName);
 
-    const response = await axios({
-      method: 'GET',
-      url: url,
-      responseType: 'stream',
-    });
+    try {
+      const response = await axios({
+        method: 'GET',
+        url: url,
+        responseType: 'stream',
+        timeout: 60000,
+      });
 
-    const writer = fs.createWriteStream(destination);
-    response.data.pipe(writer);
+      const writer = fs.createWriteStream(destination);
+      response.data.pipe(writer);
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', () => resolve(destination));
-      writer.on('error', reject);
-    });
+      return new Promise((resolve, reject) => {
+        writer.on('finish', () => resolve(destination));
+        writer.on('error', (err) => {
+          this.logger.error(`File write error: ${err.message}`);
+          reject(err);
+        });
+        response.data.on('error', (err: any) => {
+          this.logger.error(`Stream error during download: ${err.message}`);
+          reject(err);
+        });
+      });
+    } catch (err: any) {
+      this.logger.error(`downloadFile failed: ${err.message}`);
+      throw err;
+    }
   }
 }
