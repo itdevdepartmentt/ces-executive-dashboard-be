@@ -27,7 +27,7 @@ export class QaService {
     return formTapping;
   }
 
-  async getAllFormTapping(page = 1, limit = 10, search?: string, filters?: string, user?: any) {
+  async getAllFormTapping(page = 1, limit = 10, search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const skip = (page - 1) * limit;
     
     const andConditions: any[] = [];
@@ -67,7 +67,7 @@ export class QaService {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
       }),
       this.prisma.qaFormTapping.count({ where: whereClause }),
     ]);
@@ -220,7 +220,7 @@ export class QaService {
     };
   }
 
-  async exportAllFormTapping(search?: string, filters?: string, user?: any) {
+  async exportAllFormTapping(search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const andConditions: any[] = [];
     
     if (user && user.role === 'QC') {
@@ -255,7 +255,7 @@ export class QaService {
 
     return this.prisma.qaFormTapping.findMany({
       where: whereClause,
-      orderBy: { createdAt: 'desc' },
+      orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
   }
 
@@ -290,7 +290,7 @@ export class QaService {
 
   // --- QaTicket (Pending Tickets) ---
 
-  async getPendingTickets(page = 1, limit = 10, search?: string, filters?: string, user?: any) {
+  async getPendingTickets(page = 1, limit = 10, search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const skip = (page - 1) * limit;
 
     const andConditions: any[] = [];
@@ -327,7 +327,7 @@ export class QaService {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
       }),
     ]);
 
@@ -365,7 +365,7 @@ export class QaService {
     };
   }
 
-  async exportPendingTickets(search?: string, filters?: string, user?: any) {
+  async exportPendingTickets(search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const andConditions: any[] = [];
 
     if (search) {
@@ -396,7 +396,7 @@ export class QaService {
 
     return this.prisma.qaTicket.findMany({
       where: whereClause,
-      orderBy: { createdAt: 'desc' },
+      orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
   }
 

@@ -42,6 +42,8 @@ export class QaController {
       search,
       filters,
       req.user,
+      sortBy,
+      sortOrder
     );
   }
 
@@ -54,7 +56,7 @@ export class QaController {
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Req() req?: any,
   ) {
-    return this.qaService.exportPendingTickets(search, filters, req.user);
+    return this.qaService.exportPendingTickets(search, filters, req.user, sortBy, sortOrder);
   }
 
   @Get('tickets/options')
@@ -123,6 +125,8 @@ export class QaController {
       search,
       filters,
       req.user,
+      sortBy,
+      sortOrder
     );
   }
 
@@ -179,8 +183,9 @@ export class QaController {
     @Query('filters') filters?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Req() req?: any,
   ) {
-    return this.qaService.exportAllFormTapping(search, filters);
+    return this.qaService.exportAllFormTapping(search, filters, req?.user, sortBy, sortOrder);
   }
 
   @Get(':id')
