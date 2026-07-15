@@ -68,6 +68,19 @@ export class QaProductivityService {
       }
     }
 
+    // Add all users with QC or TL_QC roles so they appear even if they have no agents/tappings
+    const qcUsers = await this.prisma.user.findMany({
+      where: {
+        role: { in: ['QC', 'TL_QC'] }
+      }
+    });
+
+    for (const user of qcUsers) {
+      if (!qcAgentMap.has(user.name)) {
+        qcAgentMap.set(user.name, new Set());
+      }
+    }
+
     // Build QC Productivity
     const qcProductivity: any[] = [];
     for (const [tapper, agentSet] of qcAgentMap.entries()) {
@@ -221,6 +234,11 @@ export class QaProductivityService {
       if (t.tapper && t.tapper.trim() !== '') allQcs.add(t.tapper);
       if (t.agent && t.agent.trim() !== '') allAgents.add(t.agent);
     });
+    
+    const qcUsers = await this.prisma.user.findMany({
+      where: { role: { in: ['QC', 'TL_QC'] } }
+    });
+    qcUsers.forEach(u => allQcs.add(u.name));
     
     const uniqueQcs = Array.from(allQcs).sort();
     const uniqueAgents = Array.from(allAgents).sort();

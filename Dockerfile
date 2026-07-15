@@ -12,7 +12,7 @@ RUN npm install
 # Copy all code
 COPY . .
 
-RUN npx prisma generate
+RUN DIRECT_URL="dummy" npx prisma generate
 
 # Build the application
 RUN npm run build

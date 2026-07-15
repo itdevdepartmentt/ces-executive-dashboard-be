@@ -797,7 +797,7 @@ export class QaService {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
       }),
       this.prisma.qaFormTapping.count({ where: whereClause }),
     ]);

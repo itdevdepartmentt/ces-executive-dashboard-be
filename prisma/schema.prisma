@@ -163,11 +163,29 @@ model RawOmnix {
 
 model RawCall {
   id               Int       @id @default(autoincrement())
+  kipId            String    @unique @map("kip_id")
+  updateStamp      DateTime? @map("update_stamp")
+  msisdn           String?   @map("msisdn")
+  brand            String?   @map("brand")
+  unitType         String?   @map("unit_type")
+  unitName         String?   @map("unit_name")
+  areaName         String?   @map("area_name")
+  regName          String?   @map("reg_name")
+  topicReason1     String?   @map("topic_reason_1")
+  topicReason2     String?   @map("topic_reason_2")
+  topicResult      String?   @map("topic_result")
+  service          String?   @map("service")
+  appId            String?   @map("app_id")
+  userId           String?   @map("user_id")
+  employeeCode     String?   @map("employee_code")
+  employeeName     String?   @map("employee_name")
+  notes            String?   @map("notes")
   corp             String?
   customerType     String?   @map("customer_type")
   eskalasi         String?
   inSla            Boolean?
   isFcr            Boolean?
+  isFcrRealisasi   Boolean?
   isPareto         Boolean?
   isVip            Boolean?
   product          String?
@@ -175,24 +193,6 @@ model RawCall {
   statusTiket      Boolean?
   tier             String?
   validationStatus String?
-  appId            String?   @map("app_id")
-  areaName         String?   @map("area_name")
-  brand            String?   @map("brand")
-  employeeCode     String?   @map("employee_code")
-  employeeName     String?   @map("employee_name")
-  msisdn           String?   @map("msisdn")
-  notes            String?   @map("notes")
-  regName          String?   @map("reg_name")
-  service          String?   @map("service")
-  topicReason1     String?   @map("topic_reason_1")
-  topicReason2     String?   @map("topic_reason_2")
-  topicResult      String?   @map("topic_result")
-  unitName         String?   @map("unit_name")
-  unitType         String?   @map("unit_type")
-  updateStamp      DateTime? @map("update_stamp")
-  userId           String?   @map("user_id")
-  kipId            String    @unique @map("kip_id")
-  isFcrRealisasi   Boolean?
 
   @@index([msisdn])
   @@index([updateStamp])
