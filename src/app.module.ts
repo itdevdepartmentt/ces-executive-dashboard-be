@@ -55,9 +55,14 @@ import { QaProductivityModule } from './modules/qa-productivity/qa-productivity.
     BullModule.forRoot({
       connection: process.env.REDIS_URL
         ? {
-            url: process.env.REDIS_URL,
+            host: new URL(process.env.REDIS_URL).hostname,
+            port: parseInt(new URL(process.env.REDIS_URL).port, 10) || (process.env.REDIS_URL.startsWith('rediss://') ? 6380 : 6379),
+            password: new URL(process.env.REDIS_URL).password || undefined,
+            username: new URL(process.env.REDIS_URL).username || undefined,
+            tls: process.env.REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
             maxRetriesPerRequest: null,
             enableReadyCheck: false,
+            keepAlive: 10000,
           }
         : {
             host: process.env.REDIS_HOST || 'localhost',

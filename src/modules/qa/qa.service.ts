@@ -138,6 +138,8 @@ export class QaService {
               parameterPenilaian: normalizedData.parameterpenilaian || normalizedData['parameter penilaian'] || '',
               subParameterPenilaian: normalizedData.subparameterpenilaian || normalizedData['sub parameter penilaian'] || '',
               peak: parseInt(normalizedData.peak || '3') || 3,
+              msisdn: normalizedData.msisdn || normalizedData.jumlahmsisdn || '',
+              createdTicket: normalizedData.ticketcreated || normalizedData['created ticket'] ? new Date(normalizedData.ticketcreated || normalizedData['created ticket']) : null,
             });
           }
         })
@@ -194,8 +196,11 @@ export class QaService {
   }
 
   async getHistoryFilterOptions(user?: any) {
-    let whereClause: any = {};
-    if (user && user.role === 'QC') {
+    const whereClause: any = {};
+
+    if (user?.role === 'USER') {
+      whereClause.agent = user.name;
+    } else if (user?.role === 'QC') {
       whereClause.tapper = user.name;
     }
 
@@ -468,6 +473,8 @@ export class QaService {
               perusahaan: normalizedData.namaperusahaan || normalizedData.customername || normalizedData.perusahaan || normalizedData.company || '',
               customerRequests: normalizedData.ticketsubject || normalizedData.customerrequests || normalizedData.request || '',
               agentResponse: normalizedData.description || normalizedData.agentresponse || normalizedData.response || '',
+              msisdn: normalizedData.msisdn || normalizedData.jumlahmsisdn || '',
+              createdTicket: normalizedData.ticketcreated ? new Date(normalizedData.ticketcreated) : null,
             });
           }
         })
@@ -611,8 +618,8 @@ export class QaService {
 
     // Group by month for monthly score chart
     const monthlyMap = new Map<number, { totalScore: number; count: number }>();
-    const agentMap = new Map<string, { totalScore: number; count: number }>();
-    const teamLeaderMap = new Map<string, { totalScore: number; count: number }>();
+    const agentMap = new Map<string, { totalScore: number; count: number; ncCount: number }>();
+    const teamLeaderMap = new Map<string, { totalScore: number; count: number; ncCount: number }>();
     const paramMonthlyMap = new Map<number, {
       validitas: number; serviceLevel: number; kalimat: number;
       responTime: number; dokumentasi: number; count: number;
@@ -620,6 +627,7 @@ export class QaService {
 
     // NC detail list (tickets where any parameter got less than max)
     const ncDetails: any[] = [];
+    const nonNcDetails: any[] = [];
 
     for (const row of allData) {
       const monthNum = new Date(row.createdAt).getMonth() + 1;
@@ -633,17 +641,15 @@ export class QaService {
       monthlyMap.set(monthNum, existing);
 
       // Agent aggregation
-      const agentExisting = agentMap.get(row.agent) || { totalScore: 0, count: 0 };
+      const agentExisting = agentMap.get(row.agent) || { totalScore: 0, count: 0, ncCount: 0 };
       agentExisting.totalScore += totalScore;
       agentExisting.count += 1;
-      agentMap.set(row.agent, agentExisting);
 
       // Team Leader aggregation
       const tl = row.teamLeader || 'Unknown';
-      const tlExisting = teamLeaderMap.get(tl) || { totalScore: 0, count: 0 };
+      const tlExisting = teamLeaderMap.get(tl) || { totalScore: 0, count: 0, ncCount: 0 };
       tlExisting.totalScore += totalScore;
       tlExisting.count += 1;
-      teamLeaderMap.set(tl, tlExisting);
 
       // Parameter monthly aggregation
       const paramExisting = paramMonthlyMap.get(monthNum) || {
@@ -661,7 +667,11 @@ export class QaService {
       // Collect NC details (non-compliant: any score below max)
       const isNC = row.scoreValiditas < 30 || row.scoreServiceLevel < 30 ||
         row.scoreKalimat < 10 || row.scoreResponTime < 15 || row.scoreDokumentasi < 15;
+      
       if (isNC) {
+        agentExisting.ncCount += 1;
+        tlExisting.ncCount += 1;
+        
         ncDetails.push({
           id: row.id,
           agent: row.agent,
@@ -677,7 +687,21 @@ export class QaService {
             ? (row.komitmen ? '[Komitmen Disembunyikan]' : null) 
             : row.komitmen,
         });
+      } else {
+        nonNcDetails.push({
+          id: row.id,
+          agent: row.agent,
+          teamLeader: row.teamLeader,
+          tapper: row.tapper,
+          createdAt: row.createdAt,
+          peak: row.peak,
+          idTiket: row.idTiket,
+          score: totalScore,
+        });
       }
+      
+      agentMap.set(row.agent, agentExisting);
+      teamLeaderMap.set(tl, tlExisting);
     }
 
     // Format monthly scores
@@ -698,6 +722,7 @@ export class QaService {
         sampling: data.count,
         qaScore: parseFloat((data.totalScore / data.count).toFixed(2)),
         achievement: (data.totalScore / data.count) >= 97 ? 'Achieved' : 'Not Achieved',
+        totalNC: data.ncCount,
       }))
       .sort((a, b) => b.qaScore - a.qaScore);
 
@@ -729,7 +754,8 @@ export class QaService {
       agentRanking,
       teamLeaderRanking,
       parameterAchievement,
-      ncDetails: ncDetails.slice(0, 500), // Limit NC details
+      ncDetails: ncDetails.slice(0, 500),
+      nonNcDetails: nonNcDetails.slice(0, 500),
       totalSampling: allData.length,
     };
   }
@@ -742,9 +768,11 @@ export class QaService {
     const skip = (page - 1) * limit;
     const whereClause: any = {};
     const andConditions: any[] = [];
-    // Role-based filtering: Agents can only see their own detail tapping
+    // Role-based filtering: Agents can only see their own detail tapping, QC can only see theirs
     if (user?.role === 'USER') {
       whereClause.agent = user.name;
+    } else if (user?.role === 'QC') {
+      whereClause.tapper = user.name;
     }
     if (year) {
       const y = parseInt(year);
@@ -811,7 +839,17 @@ export class QaService {
         scoreKalimat: true,
         scoreResponTime: true,
         scoreDokumentasi: true,
+        agent: true,
       },
+    });
+    
+    // Fetch lookup agents to determine which are eksekutor
+    const lookupAgents = await this.prisma.lookupAgent.findMany();
+    const eksekutorAgents = new Set<string>();
+    lookupAgents.forEach(a => {
+      if (a.group && a.group.toLowerCase().includes('eksekutor') && a.namaAgent) {
+        eksekutorAgents.add(a.namaAgent.toLowerCase().trim());
+      }
     });
 
     let totalScoreSum = 0;
@@ -821,8 +859,13 @@ export class QaService {
     let ncResponTime = 0;
     let ncDokumentasi = 0;
     let totalNC = 0;
+    let totalEksekutorTappings = 0;
 
     for (const row of allForStats) {
+      if (row.agent && eksekutorAgents.has(row.agent.toLowerCase().trim())) {
+        totalEksekutorTappings++;
+      }
+      
       const totalScore = row.scoreValiditas + row.scoreServiceLevel +
         row.scoreKalimat + row.scoreResponTime + row.scoreDokumentasi;
       totalScoreSum += totalScore;
@@ -840,6 +883,10 @@ export class QaService {
 
     const avgScore = allForStats.length > 0
       ? parseFloat((totalScoreSum / allForStats.length).toFixed(2))
+      : 0;
+      
+    const eksekutorPercentage = allForStats.length > 0
+      ? parseFloat(((totalEksekutorTappings / allForStats.length) * 100).toFixed(2))
       : 0;
 
     return {
@@ -859,13 +906,19 @@ export class QaService {
         ncKalimat,
         ncResponTime,
         ncDokumentasi,
+        eksekutorPercentage,
+        totalEksekutorTappings,
       },
     };
   }
 
   async getDetailTappingFilterOptions(user?: any) {
     const whereClause: any = {};
-    // No role-based filtering for QC in Detail Tapping filter options
+    if (user?.role === 'QC') {
+      whereClause.tapper = user.name;
+    } else if (user?.role === 'USER') {
+      whereClause.agent = user.name;
+    }
 
     const [agents, years, peaks] = await Promise.all([
       this.prisma.qaFormTapping.findMany({
@@ -1008,6 +1061,8 @@ export class QaService {
         customerRequests: raw.ticketSubject || raw.description || '',
         agentResponse: raw.converse || '',
         handlingTime: bestHandlingTime,
+        msisdn: raw.jumlahMsisdn || '',
+        createdTicket: raw.ticketCreated,
       });
     }
 
