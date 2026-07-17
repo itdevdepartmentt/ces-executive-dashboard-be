@@ -458,7 +458,7 @@ export class QaProductivityService {
       if (rowNumber > 2) { // Skip headers
         // Columns (1-indexed based on exceljs)
         // 1: NO, 2: NAMA AGENT, 3: GROUPING, 4: LOS, 5: GENDER, 6: TEAM LEADER, 7: TAPPER, 8: NAMA OCA, 9: Jumlah Sample, 10: Peak 1, 11: Peak 2, 12: Peak 3
-        const agentName = row.getCell(8).value || row.getCell(2).value; // Try NAMA OCA first (Col 8), then NAMA AGENT (Col 2)
+        const agentName = row.getCell(2).value || row.getCell(8).value; // Prefer NAMA AGENT (Col 2), fallback to NAMA OCA (Col 8)
         const qcName = row.getCell(7).value; // TAPPER (Col 7)
         
         const group = row.getCell(3).value; // GROUPING (Col 3)
