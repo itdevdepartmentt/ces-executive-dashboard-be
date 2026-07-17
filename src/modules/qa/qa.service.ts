@@ -27,72 +27,19 @@ export class QaService {
     return formTapping;
   }
 
-  async getPendingTickets(
-    page: number, 
-    limit: number, 
-    year?: string, 
-    month?: string, 
-    agent?: string,
-    peak?: string,
-    search?: string,
-    filters?: string,
-    sortBy?: string,
-    sortOrder?: 'asc' | 'desc',
-    user?: any
-  ) {
+  async getPendingTickets(page = 1, limit = 10, search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     try {
-      const parsedPage = isNaN(page) || page < 1 ? 1 : page;
-      const parsedLimit = isNaN(limit) || limit < 1 ? 100 : limit;
-      const skip = (parsedPage - 1) * parsedLimit;
+      const skip = (page - 1) * limit;
 
       const andConditions: any[] = [];
-
-      if (year && month) {
-        const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-        const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
-        andConditions.push({
-          createdTicket: {
-            gte: startDate,
-            lte: endDate,
-          }
-        });
-      }
-
-      // Restrict tickets based on the user's role and identity
-      if (user) {
-        if (user.role === 'TL_QC' || user.role === 'QC') {
-          // TL_QC / QC can only see tickets where they are assigned as the 'tapper'
-          andConditions.push({
-            tapper: {
-              equals: user.name,
-              mode: 'insensitive'
-            }
-          });
-        }
-        // ADMIN can see everything, no additional filter
-      }
-
-      if (agent) {
-        andConditions.push({
-          agent: {
-            equals: agent,
-            mode: 'insensitive',
-          }
-        });
-      }
-
-      if (peak === 'PEAK') {
-        andConditions.push({ handlingTime: { gt: '00:05:00' } });
-      } else if (peak === 'NON-PEAK') {
-        andConditions.push({ handlingTime: { lte: '00:05:00' } });
-      }
 
       if (search) {
         andConditions.push({
           OR: [
             { idTiket: { contains: search, mode: 'insensitive' } },
-            { agent: { contains: search, mode: 'insensitive' } }
-          ]
+            { agent: { contains: search, mode: 'insensitive' } },
+            { tapper: { contains: search, mode: 'insensitive' } },
+          ],
         });
       }
 
@@ -110,29 +57,24 @@ export class QaService {
         } catch (e) {}
       }
 
-      const where = andConditions.length > 0 ? { AND: andConditions } : {};
-
-      let orderBy: any = { createdTicket: 'desc' };
-      if (sortBy) {
-        orderBy = { [sortBy]: sortOrder || 'asc' };
-      }
+      const whereClause = andConditions.length > 0 ? { AND: andConditions } : {};
 
       const [total, data] = await Promise.all([
-        this.prisma.qaTicket.count({ where }),
+        this.prisma.qaTicket.count({ where: whereClause }),
         this.prisma.qaTicket.findMany({
-          where,
+          where: whereClause,
           skip,
-          take: parsedLimit,
-          orderBy,
+          take: limit,
+          orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
         }),
       ]);
 
       return {
         data,
         total,
-        page: parsedPage,
-        limit: parsedLimit,
-        totalPages: Math.ceil(total / parsedLimit),
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       };
     } catch (e: any) {
       console.error('CRITICAL ERROR IN getPendingTickets:', e);
