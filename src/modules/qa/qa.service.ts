@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException, HttpException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -136,7 +136,12 @@ export class QaService {
       };
     } catch (e: any) {
       console.error('CRITICAL ERROR IN getPendingTickets:', e);
-      throw new InternalServerErrorException(e.message || e.toString());
+      throw new HttpException({ 
+        success: false, 
+        message: 'Error from getPendingTickets',
+        detail: e.message || e.toString(),
+        stack: e.stack
+      }, 500);
     }
   }
 
@@ -1179,7 +1184,12 @@ export class QaService {
       };
     } catch (e: any) {
       console.error('CRITICAL ERROR IN syncTicketsFromOca:', e);
-      throw new InternalServerErrorException(e.message || e.toString());
+      throw new HttpException({ 
+        success: false, 
+        message: 'Error from syncTicketsFromOca',
+        detail: e.message || e.toString(),
+        stack: e.stack
+      }, 500);
     }
   }
   async updateKomitmen(id: string, komitmen: string, user: any) {
