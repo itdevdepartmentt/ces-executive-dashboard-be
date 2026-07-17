@@ -265,15 +265,13 @@ export class QaService {
       whereClause.tapper = user.name;
     }
 
-    const [tappers, agents, channels, kipLevel2s, kipLevel3s, jenisInteraksis, inOutSlas] = await Promise.all([
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['agent'], select: { agent: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['channel'], select: { channel: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['kipLevel2'], select: { kipLevel2: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } }),
-      this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } }),
-    ]);
+    const tappers = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } });
+    const agents = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['agent'], select: { agent: true } });
+    const channels = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['channel'], select: { channel: true } });
+    const kipLevel2s = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['kipLevel2'], select: { kipLevel2: true } });
+    const kipLevel3s = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } });
+    const jenisInteraksis = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } });
+    const inOutSlas = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } });
 
     return {
       tapper: tappers.map(t => t.tapper).filter(Boolean),
@@ -361,15 +359,13 @@ export class QaService {
   async getTicketFilterOptions(user?: any) {
     let whereClause: any = {};
 
-    const [tappers, agents, channels, kipLevel2s, kipLevel3s, jenisInteraksis, inOutSlas] = await Promise.all([
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['agent'], select: { agent: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['channel'], select: { channel: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['kipLevel2'], select: { kipLevel2: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } }),
-      this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } }),
-    ]);
+    const tappers = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } });
+    const agents = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['agent'], select: { agent: true } });
+    const channels = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['channel'], select: { channel: true } });
+    const kipLevel2s = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['kipLevel2'], select: { kipLevel2: true } });
+    const kipLevel3s = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } });
+    const jenisInteraksis = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } });
+    const inOutSlas = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } });
 
     return {
       tapper: tappers.map(t => t.tapper).filter(Boolean),

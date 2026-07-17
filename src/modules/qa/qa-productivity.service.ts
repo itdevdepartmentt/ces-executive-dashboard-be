@@ -337,33 +337,24 @@ export class QaProductivityService {
 
   async saveSettings(data: { qcs: any[], agents: any[] }) {
     const { qcs, agents } = data;
-    const transactions: any[] = [];
-
-    // Delete existing
-    transactions.push(this.prisma.qaTargetSetting.deleteMany());
 
     // Fetch existing lookup agents for smart matching
     const allLookupAgents = await this.prisma.lookupAgent.findMany();
     const lookupMap = new Map<string, any>();
     allLookupAgents.forEach(a => { if (a.namaAgent) lookupMap.set(a.namaAgent.toLowerCase().trim(), a); });
 
-    // Re-insert qcs
+    const newTargetSettings = [];
     const processedQcs = new Set<string>();
     for (const qc of qcs) {
       if (processedQcs.has(qc.name)) continue;
       processedQcs.add(qc.name);
-      
-      transactions.push(
-        this.prisma.qaTargetSetting.upsert({
-          where: { name_type: { name: qc.name, type: 'QC' } },
-          update: { daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) },
-          create: { name: qc.name, type: 'QC', daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) }
-        })
-      );
+      newTargetSettings.push({ name: qc.name, type: 'QC', daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) });
     }
 
-    // Re-insert agents
     const processedAgents = new Set<string>();
+    const lookupUpdates = [];
+    const lookupCreates = [];
+    
     for (const ag of agents) {
       const existingLookup = findAgentMatch(ag.name, lookupMap);
       const canonicalName = existingLookup ? existingLookup.namaAgent : ag.name;
@@ -371,44 +362,41 @@ export class QaProductivityService {
       if (processedAgents.has(canonicalName)) continue;
       processedAgents.add(canonicalName);
 
-      transactions.push(
-        this.prisma.qaTargetSetting.upsert({
-          where: { name_type: { name: canonicalName, type: 'AGENT' } },
-          update: { peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly) },
-          create: { name: canonicalName, type: 'AGENT', peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly), daily: 0 }
-        })
-      );
+      newTargetSettings.push({ name: canonicalName, type: 'AGENT', peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly), daily: 0 });
 
       if (ag.tapper || ag.teamLeader || ag.group) {
         if (existingLookup) {
-          transactions.push(
-            this.prisma.lookupAgent.update({
-              where: { id: existingLookup.id },
-              data: { tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group }
-            })
-          );
+          lookupUpdates.push({ id: existingLookup.id, data: { tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group } });
         } else {
-          transactions.push(
-            this.prisma.lookupAgent.create({
-              data: { namaAgent: ag.name, tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group }
-            })
-          );
+          lookupCreates.push({ namaAgent: ag.name, tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group });
         }
       }
     }
 
-    // Delete lookupAgents that are not in the new payload (synchronize with Excel upload)
-    if (processedAgents.size > 0) {
-      transactions.push(
-        this.prisma.lookupAgent.deleteMany({
-          where: {
-            namaAgent: { notIn: Array.from(processedAgents) }
-          }
-        })
-      );
+    // Now execute them rapidly but sequentially (no transaction) to prevent pool starvation
+    await this.prisma.qaTargetSetting.deleteMany();
+    if (newTargetSettings.length > 0) {
+      await this.prisma.qaTargetSetting.createMany({ data: newTargetSettings });
     }
 
-    await this.prisma.$transaction(transactions);
+    if (processedAgents.size > 0) {
+      await this.prisma.lookupAgent.deleteMany({
+        where: { namaAgent: { notIn: Array.from(processedAgents) } }
+      });
+    }
+
+    if (lookupCreates.length > 0) {
+      await this.prisma.lookupAgent.createMany({ data: lookupCreates });
+    }
+
+    for (let i = 0; i < lookupUpdates.length; i++) {
+      await this.prisma.lookupAgent.update({
+        where: { id: lookupUpdates[i].id },
+        data: lookupUpdates[i].data
+      });
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10)); // Yield to pool
+    }
+
     // Run the retroactive update in background so that it doesn't cause an HTTP request timeout
     this.retroactivelyUpdateTickets().catch(err => console.error('Error during retroactive update:', err));
     
@@ -496,7 +484,8 @@ export class QaProductivityService {
   }
 
   async parseExcelSettings(file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('File is required');
+    try {
+      if (!file) throw new BadRequestException('File is required');
     
     const workbook = new ExcelJS.Workbook();
     try {
@@ -550,5 +539,9 @@ export class QaProductivityService {
     const uniqueQcs = Array.from(new Map(parsedQcs.map(item => [item.name, item])).values());
     
     return { parsedAgents, parsedQcs: uniqueQcs };
+    } catch (err) {
+      console.error('parseExcelSettings crashed:', err);
+      throw new BadRequestException(`Excel parsing failed: ${err.message}\nStack: ${err.stack}`);
+    }
   }
 }
