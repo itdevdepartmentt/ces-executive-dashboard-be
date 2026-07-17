@@ -48,16 +48,12 @@ export class RawDownloadService {
     let page = 0;
     let hasWrittenHeader = false;
     let headers: string[] = [];
-    let globalRowNumber = 1;
 
     while (true) {
       const rows = await this.getRows(type, page * pageSize, pageSize, dateRange);
       if (!rows.length) break;
 
       for (const row of rows) {
-        if (type === 'news-log') {
-          row['No'] = globalRowNumber++;
-        }
         const formattedRow = this.omitExcludedColumns(row, type);
 
         if (!hasWrittenHeader) {
