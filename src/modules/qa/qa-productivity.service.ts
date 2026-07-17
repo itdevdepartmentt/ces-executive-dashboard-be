@@ -393,8 +393,8 @@ export class QaProductivityService {
     }
 
     await this.prisma.$transaction(transactions);
-    // Await the retroactive update so that when the UI refetches immediately after, the data is already updated
-    await this.retroactivelyUpdateTickets().catch(err => console.error('Error during retroactive update:', err));
+    // Run the retroactive update in background so that it doesn't cause an HTTP request timeout
+    this.retroactivelyUpdateTickets().catch(err => console.error('Error during retroactive update:', err));
     
     return { success: true };
   }
@@ -467,7 +467,12 @@ export class QaProductivityService {
     if (!file) throw new BadRequestException('File is required');
     
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(file.buffer as any);
+    try {
+      await workbook.xlsx.load(file.buffer as any);
+    } catch (err) {
+      console.error('Excel parse error:', err);
+      throw new BadRequestException('Failed to parse Excel file: ' + err.message);
+    }
     const ws = workbook.worksheets[0];
     
     const parsedAgents: any[] = [];
