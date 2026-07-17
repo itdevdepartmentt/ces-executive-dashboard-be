@@ -3,6 +3,8 @@ import { PrismaService } from 'prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
 import { findAgentMatch } from '../../utils/agent-matcher';
 
+let isRetroactiveUpdateRunning = false;
+
 @Injectable()
 export class QaProductivityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -171,12 +173,15 @@ export class QaProductivityService {
       const p2 = tappings.filter(t => t.peak === 2).length;
       const p3 = tappings.filter(t => t.peak === 3).length;
 
-      // Find the tapper for this agent from either tapping data or lookup
-      const tapperForAgent = tappings.find(t => t.tapper)?.tapper || lookupAgents.find(a => a.namaAgent === agent)?.tapper || 'Unknown Tapper';
+      // Find the tapper and group for this agent from either tapping data or lookup
+      const lookupAgentInfo = lookupAgents.find(a => a.namaAgent === agent);
+      const tapperForAgent = tappings.find(t => t.tapper)?.tapper || lookupAgentInfo?.tapper || 'Unknown Tapper';
+      const groupForAgent = lookupAgentInfo?.group || '';
 
       agentPerformance.push({
         agent,
         tapper: tapperForAgent,
+        group: groupForAgent,
         peak1Target: aTarget.peak1 || 0,
         peak1Realization: p1,
         peak1Remaining: (aTarget.peak1 || 0) - p1,
@@ -411,21 +416,29 @@ export class QaProductivityService {
   }
 
   private async retroactivelyUpdateTickets() {
-    console.log('Running automatic retroactive update for TL and Tapper...');
-    const lookupAgents = await this.prisma.lookupAgent.findMany();
-    
-    const agentMap = new Map<string, any>();
-    for (const agent of lookupAgents) {
-      if (agent.namaAgent) {
-        agentMap.set(agent.namaAgent.toLowerCase().trim(), agent);
-      }
+    if (isRetroactiveUpdateRunning) {
+      console.log('Retroactive update is already running, skipping to prevent DB pool starvation...');
+      return;
     }
+    isRetroactiveUpdateRunning = true;
+    console.log('Running automatic retroactive update for TL and Tapper...');
+    
+    try {
+      const lookupAgents = await this.prisma.lookupAgent.findMany();
+      
+      const agentMap = new Map<string, any>();
+      for (const agent of lookupAgents) {
+        if (agent.namaAgent) {
+          agentMap.set(agent.namaAgent.toLowerCase().trim(), agent);
+        }
+      }
 
-    const allTappings = await this.prisma.qaFormTapping.findMany({
-      where: { OR: [{ teamLeader: '' }, { tapper: '' }] },
-      select: { id: true, agent: true, tapper: true, teamLeader: true }
-    });
+      const allTappings = await this.prisma.qaFormTapping.findMany({
+        where: { OR: [{ teamLeader: '' }, { tapper: '' }] },
+        select: { id: true, agent: true, tapper: true, teamLeader: true }
+      });
 
+    let tappingsUpdateCount = 0;
     for (const t of allTappings) {
       if (!t.agent) continue;
       const lookup = findAgentMatch(t.agent, agentMap);
@@ -437,6 +450,8 @@ export class QaProductivityService {
             where: { id: t.id },
             data: { teamLeader: lookup.teamLeader || t.teamLeader, tapper: lookup.tapper || t.tapper }
           });
+          tappingsUpdateCount++;
+          if (tappingsUpdateCount % 10 === 0) await new Promise(r => setTimeout(r, 20)); // Yield to DB pool
         }
       }
     }
@@ -446,6 +461,7 @@ export class QaProductivityService {
       select: { id: true, agent: true, tapper: true, teamLeader: true }
     });
 
+    let updateCount = 0;
     for (const t of allTickets) {
       if (!t.agent) continue;
       const lookup = findAgentMatch(t.agent, agentMap);
@@ -457,10 +473,15 @@ export class QaProductivityService {
             where: { id: t.id },
             data: { teamLeader: lookup.teamLeader || t.teamLeader, tapper: lookup.tapper || t.tapper }
           });
+          updateCount++;
+          if (updateCount % 10 === 0) await new Promise(r => setTimeout(r, 20)); // Yield to DB pool
         }
       }
     }
     console.log('Automatic retroactive update complete.');
+    } finally {
+      isRetroactiveUpdateRunning = false;
+    }
   }
 
   async parseExcelSettings(file: Express.Multer.File) {
