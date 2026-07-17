@@ -343,7 +343,11 @@ export class QaProductivityService {
     allLookupAgents.forEach(a => { if (a.namaAgent) lookupMap.set(a.namaAgent.toLowerCase().trim(), a); });
 
     // Re-insert qcs
+    const processedQcs = new Set<string>();
     for (const qc of qcs) {
+      if (processedQcs.has(qc.name)) continue;
+      processedQcs.add(qc.name);
+      
       transactions.push(
         this.prisma.qaTargetSetting.upsert({
           where: { name_type: { name: qc.name, type: 'QC' } },
@@ -354,9 +358,13 @@ export class QaProductivityService {
     }
 
     // Re-insert agents
+    const processedAgents = new Set<string>();
     for (const ag of agents) {
       const existingLookup = findAgentMatch(ag.name, lookupMap);
       const canonicalName = existingLookup ? existingLookup.namaAgent : ag.name;
+
+      if (processedAgents.has(canonicalName)) continue;
+      processedAgents.add(canonicalName);
 
       transactions.push(
         this.prisma.qaTargetSetting.upsert({
@@ -388,6 +396,17 @@ export class QaProductivityService {
     // Await the retroactive update so that when the UI refetches immediately after, the data is already updated
     await this.retroactivelyUpdateTickets().catch(err => console.error('Error during retroactive update:', err));
     
+    return { success: true };
+  }
+
+  async bulkDeleteSettings(agentNames: string[]) {
+    if (!agentNames || agentNames.length === 0) return { success: true };
+    await this.prisma.qaTargetSetting.deleteMany({
+      where: {
+        name: { in: agentNames },
+        type: 'AGENT',
+      }
+    });
     return { success: true };
   }
 

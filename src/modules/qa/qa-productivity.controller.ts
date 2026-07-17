@@ -35,6 +35,12 @@ export class QaProductivityController {
     return this.qaProductivityService.saveSettings(body);
   }
 
+  @Post('settings/bulk-delete')
+  @Roles('ADMIN', 'TL_QC')
+  bulkDeleteSettings(@Body() body: { agentNames: string[] }) {
+    return this.qaProductivityService.bulkDeleteSettings(body.agentNames);
+  }
+
   @Post('settings/parse-excel')
   @Roles('ADMIN', 'TL_QC')
   @UseInterceptors(FileInterceptor('file'))
