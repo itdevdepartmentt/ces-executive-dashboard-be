@@ -48,12 +48,16 @@ export class RawDownloadService {
     let page = 0;
     let hasWrittenHeader = false;
     let headers: string[] = [];
+    let globalRowNumber = 1;
 
     while (true) {
       const rows = await this.getRows(type, page * pageSize, pageSize, dateRange);
       if (!rows.length) break;
 
       for (const row of rows) {
+        if (type === 'news-log') {
+          row['No'] = globalRowNumber++;
+        }
         const formattedRow = this.omitExcludedColumns(row, type);
 
         if (!hasWrittenHeader) {
@@ -257,22 +261,22 @@ export class RawDownloadService {
     if (type === 'call') {
       const callColumnOrder = [
         'kipId',
-        'updateStamp',
-        'msisdn',
-        'brand',
-        'unitType',
-        'unitName',
+        'appId',
         'areaName',
+        'brand',
+        'employeeCode',
+        'employeeName',
+        'msisdn',
+        'notes',
         'regName',
+        'service',
         'topicReason1',
         'topicReason2',
         'topicResult',
-        'service',
-        'appId',
+        'unitName',
+        'unitType',
+        'updateStamp',
         'userId',
-        'employeeCode',
-        'employeeName',
-        'notes',
         'isFcrRealisasi',
       ];
       for (const col of callColumnOrder) {

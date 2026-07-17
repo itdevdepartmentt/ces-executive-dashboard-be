@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, InternalServerError
 import { PrismaService } from 'prisma/prisma.service';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class QaService {
@@ -440,144 +441,178 @@ export class QaService {
     }
 
     const results: any[] = [];
-    const stream = Readable.from(file.buffer);
+    const isXlsx = file.originalname.toLowerCase().endsWith('.xlsx');
 
-    const csvString = file.buffer.toString('utf-8');
-    const separator = csvString.includes(';') && !csvString.includes(',') ? ';' : ',';
-    
-    return new Promise((resolve, reject) => {
-      stream
-        .pipe(csv({ separator }))
-        .on('data', (data) => {
-          // Normalize keys for robust matching
-          const normalizedData: any = {};
-          for (const key in data) {
-             const normKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-             normalizedData[normKey] = data[key];
-          }
+    const processRowData = (data: any) => {
+      // Normalize keys for robust matching
+      const normalizedData: any = {};
+      for (const key in data) {
+         if (key === undefined || key === null) continue;
+         const normKey = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+         normalizedData[normKey] = data[key];
+      }
 
-          // Smart Auto-Detection
-          const isMasterAgent = ('namaagent' in normalizedData || 'agentname' in normalizedData) && 
-                                ('teamleader' in normalizedData || 'namatl' in normalizedData || 'tapper' in normalizedData) &&
-                                !('ticketnumber' in normalizedData) && !('idtiket' in normalizedData);
-          
-          if (isMasterAgent) {
-            results.push({
-              namaAgent: normalizedData.namaagent || normalizedData.agentname || '',
-              teamLeader: normalizedData.teamleader || normalizedData.namatl || normalizedData.tl || '',
-              tapper: normalizedData.tapper || normalizedData.namatapper || '',
-            });
-            // Attach a flag to the array so we know it's master data
-            (results as any).isMasterData = true;
-          } else {
-            results.push({
-              idTiket: normalizedData.ticketnumber || normalizedData.idtiket || normalizedData.ticketid || '',
-              agent: normalizedData.resolvedby || normalizedData.assignee || normalizedData.reporter || normalizedData.agent || normalizedData.agentname || '',
-              tapper: normalizedData.tapper || normalizedData.qc || normalizedData.qa || '',
-              teamLeader: normalizedData.teamleader || normalizedData.tl || normalizedData.spv || normalizedData.supervisor || '',
-              channel: normalizedData.channel || '',
-              jenisInteraksi: normalizedData.category || normalizedData.jenisinteraksi || normalizedData.interactiontype || '',
-              kipLevel2: normalizedData.subcategory || normalizedData.kiplevel2 || '',
-              kipLevel3: normalizedData.detailcategory || normalizedData.kiplevel3 || '',
-              inOutSla: normalizedData.inoutsla || normalizedData.sla || '',
-              projectId: normalizedData.projectid || normalizedData.project || '',
-              perusahaan: normalizedData.namaperusahaan || normalizedData.customername || normalizedData.perusahaan || normalizedData.company || '',
-              customerRequests: normalizedData.ticketsubject || normalizedData.customerrequests || normalizedData.request || '',
-              agentResponse: normalizedData.description || normalizedData.agentresponse || normalizedData.response || '',
-              msisdn: normalizedData.msisdn || normalizedData.jumlahmsisdn || '',
-              createdTicket: normalizedData.ticketcreated ? new Date(normalizedData.ticketcreated) : null,
-            });
-          }
-        })
-        .on('end', async () => {
-          try {
-            if ((results as any).isMasterData) {
-               // Process Master Agent Data
-               const validAgents = results.filter(r => r.namaAgent);
-               
-               for (const agent of validAgents) {
-                 const existing = await this.prisma.lookupAgent.findFirst({
-                   where: { namaAgent: agent.namaAgent }
-                 });
+      // Smart Auto-Detection
+      const isMasterAgent = ('namaagent' in normalizedData || 'agentname' in normalizedData) && 
+                            ('teamleader' in normalizedData || 'namatl' in normalizedData || 'tapper' in normalizedData) &&
+                            !('ticketnumber' in normalizedData) && !('idtiket' in normalizedData);
+      
+      const isRawDsc = 'all' in normalizedData && 'interactiontype' in normalizedData;
 
-                 if (existing) {
-                   await this.prisma.lookupAgent.update({
-                     where: { id: existing.id },
-                     data: {
-                       teamLeader: agent.teamLeader || existing.teamLeader,
-                       tapper: agent.tapper || existing.tapper,
-                     }
-                   });
-                 } else {
-                   await this.prisma.lookupAgent.create({
-                     data: {
-                       namaAgent: agent.namaAgent,
-                       teamLeader: agent.teamLeader,
-                       tapper: agent.tapper,
-                     }
-                   });
-                 }
-               }
-               resolve({ 
-                 message: `Successfully updated ${validAgents.length} Agent Master Data records!`, 
-                 count: validAgents.length,
-                 type: 'master-agent'
-               });
-               return;
-            }
-
-            // Process Ticket Data (Existing logic)
-            // Filter out empty ID tickets and get unique by idTiket
-            const uniqueResultsMap = new Map();
-            results.forEach(item => {
-              if (item.idTiket) {
-                uniqueResultsMap.set(item.idTiket, item);
-              }
-            });
-            const uniqueResults = Array.from(uniqueResultsMap.values());
-            const incomingIds = uniqueResults.map(t => t.idTiket);
-
-            // Find existing pending tickets
-            const existingPending = await this.prisma.qaTicket.findMany({
-              where: { idTiket: { in: incomingIds } },
-              select: { idTiket: true }
-            });
-            const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
-
-            // Find existing tapped/reviewed tickets
-            const existingTapped = await this.prisma.qaFormTapping.findMany({
-              where: { idTiket: { in: incomingIds } },
-              select: { idTiket: true }
-            });
-            const existingTappedIds = new Set(existingTapped.map(t => t.idTiket));
-
-            // Filter out tickets that already exist in either pending or tapped
-            const finalBatch = uniqueResults.filter(t => 
-              !existingPendingIds.has(t.idTiket) && !existingTappedIds.has(t.idTiket)
-            );
-
-            // Batch inserts to prevent Supabase/PgBouncer ECONNRESET on large payloads
-            const BATCH_SIZE = 1000;
-            for (let i = 0; i < finalBatch.length; i += BATCH_SIZE) {
-              const batch = finalBatch.slice(i, i + BATCH_SIZE);
-              await this.prisma.qaTicket.createMany({
-                data: batch,
-              });
-            }
-            resolve({ 
-              message: `Successfully uploaded ${finalBatch.length} new tickets! (${uniqueResults.length - finalBatch.length} duplicates skipped)`, 
-              count: finalBatch.length,
-              type: 'ticket-data'
-            });
-          } catch (error) {
-            console.error('Upload Error:', error);
-            reject(new BadRequestException('Failed to insert tickets into database'));
-          }
-        })
-        .on('error', (error) => {
-          reject(new BadRequestException('Error parsing CSV file'));
+      if (isMasterAgent) {
+        results.push({
+          namaAgent: String(normalizedData.namaagent || normalizedData.agentname || ''),
+          teamLeader: String(normalizedData.teamleader || normalizedData.namatl || normalizedData.tl || ''),
+          tapper: String(normalizedData.tapper || normalizedData.namatapper || ''),
         });
-    });
+        (results as any).isMasterData = true;
+      } else if (isRawDsc) {
+        results.push({
+          idTiket: String(normalizedData.all || ''),
+          agent: String(normalizedData.agent || ''),
+          tapper: '', 
+          teamLeader: String(normalizedData.group || ''),
+          channel: String(normalizedData.channel || ''),
+          jenisInteraksi: String(normalizedData.interactiontype || ''),
+          kipLevel2: String(normalizedData.kiplevel2 || ''),
+          kipLevel3: String(normalizedData.kiplevel3 || ''),
+          inOutSla: String(normalizedData.inoutsla || ''),
+          projectId: String(normalizedData.projectid || ''),
+          perusahaan: String(normalizedData.namaperusahaan || normalizedData.companyname || ''),
+          customerRequests: String(normalizedData.subject || ''),
+          agentResponse: String(normalizedData.notes || ''),
+          msisdn: String(normalizedData.msisdn || ''),
+          createdTicket: normalizedData.createdtime ? new Date(normalizedData.createdtime) : null,
+        });
+      } else {
+        results.push({
+          idTiket: String(normalizedData.ticketnumber || normalizedData.idtiket || normalizedData.ticketid || ''),
+          agent: String(normalizedData.resolvedby || normalizedData.assignee || normalizedData.reporter || normalizedData.agent || normalizedData.agentname || ''),
+          tapper: String(normalizedData.tapper || normalizedData.qc || normalizedData.qa || ''),
+          teamLeader: String(normalizedData.teamleader || normalizedData.tl || normalizedData.spv || normalizedData.supervisor || ''),
+          channel: String(normalizedData.channel || ''),
+          jenisInteraksi: String(normalizedData.category || normalizedData.jenisinteraksi || normalizedData.interactiontype || ''),
+          kipLevel2: String(normalizedData.subcategory || normalizedData.kiplevel2 || ''),
+          kipLevel3: String(normalizedData.detailcategory || normalizedData.kiplevel3 || ''),
+          inOutSla: String(normalizedData.inoutsla || normalizedData.sla || ''),
+          projectId: String(normalizedData.projectid || normalizedData.project || ''),
+          perusahaan: String(normalizedData.namaperusahaan || normalizedData.customername || normalizedData.perusahaan || normalizedData.company || ''),
+          customerRequests: String(normalizedData.ticketsubject || normalizedData.customerrequests || normalizedData.request || ''),
+          agentResponse: String(normalizedData.description || normalizedData.agentresponse || normalizedData.response || ''),
+          msisdn: String(normalizedData.msisdn || normalizedData.jumlahmsisdn || ''),
+          createdTicket: normalizedData.ticketcreated ? new Date(normalizedData.ticketcreated) : null,
+        });
+      }
+    };
+
+    if (isXlsx) {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(file.buffer as any);
+      const worksheet = workbook.worksheets[0];
+      
+      let headers: string[] = [];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) {
+          headers = (row.values as any[]).map(h => h ? String(h).trim() : '');
+        } else {
+          const rowData: any = {};
+          (row.values as any[]).forEach((val, idx) => {
+             if (headers[idx]) {
+                rowData[headers[idx]] = val;
+             }
+          });
+          processRowData(rowData);
+        }
+      });
+    } else {
+      const stream = Readable.from(file.buffer);
+      const csvString = file.buffer.toString('utf-8');
+      const separator = csvString.includes(';') && !csvString.includes(',') ? ';' : ',';
+      
+      await new Promise((resolve, reject) => {
+        stream
+          .pipe(csv({ separator }))
+          .on('data', processRowData)
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
+
+    try {
+      if ((results as any).isMasterData) {
+         const validAgents = results.filter(r => r.namaAgent);
+         
+         for (const agent of validAgents) {
+           const existing = await this.prisma.lookupAgent.findFirst({
+             where: { namaAgent: agent.namaAgent }
+           });
+
+           if (existing) {
+             await this.prisma.lookupAgent.update({
+               where: { id: existing.id },
+               data: {
+                 teamLeader: agent.teamLeader || existing.teamLeader,
+                 tapper: agent.tapper || existing.tapper,
+               }
+             });
+           } else {
+             await this.prisma.lookupAgent.create({
+               data: {
+                 namaAgent: agent.namaAgent,
+                 teamLeader: agent.teamLeader,
+                 tapper: agent.tapper,
+               }
+             });
+           }
+         }
+         return { 
+           message: `Successfully updated ${validAgents.length} Agent Master Data records!`, 
+           count: validAgents.length,
+           type: 'master-agent'
+         };
+      }
+
+      const uniqueResultsMap = new Map();
+      results.forEach(item => {
+        if (item.idTiket) {
+          uniqueResultsMap.set(item.idTiket, item);
+        }
+      });
+      const uniqueResults = Array.from(uniqueResultsMap.values());
+      const incomingIds = uniqueResults.map(t => String(t.idTiket));
+
+      const existingPending = await this.prisma.qaTicket.findMany({
+        where: { idTiket: { in: incomingIds } },
+        select: { idTiket: true }
+      });
+      const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
+
+      const existingTapped = await this.prisma.qaFormTapping.findMany({
+        where: { idTiket: { in: incomingIds } },
+        select: { idTiket: true }
+      });
+      const existingTappedIds = new Set(existingTapped.map(t => t.idTiket));
+
+      const finalBatch = uniqueResults.filter(t => 
+        !existingPendingIds.has(String(t.idTiket)) && !existingTappedIds.has(String(t.idTiket))
+      );
+      
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < finalBatch.length; i += BATCH_SIZE) {
+        const batch = finalBatch.slice(i, i + BATCH_SIZE);
+        await this.prisma.qaTicket.createMany({
+          data: batch,
+        });
+      }
+      return { 
+        message: `Successfully uploaded ${finalBatch.length} new tickets! (${uniqueResults.length - finalBatch.length} duplicates skipped)`, 
+        count: finalBatch.length,
+        type: 'ticket-data'
+      };
+    } catch (error) {
+      console.error('Upload Error:', error);
+      throw new BadRequestException('Failed to insert tickets into database');
+    }
   }
   
   // --- QA Score Dashboard & Detail Tapping ---
