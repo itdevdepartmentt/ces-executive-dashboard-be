@@ -288,7 +288,7 @@ export class QaProductivityService {
     
     tappings.forEach(t => {
       if (t.tapper && t.tapper.trim() !== '') allQcs.add(t.tapper);
-      if (t.agent && t.agent.trim() !== '') allAgents.add(t.agent);
+      // Removed: pulling agents from tappings so old agents disappear if not in lookupAgent
     });
     
     const qcUsers = await this.prisma.user.findMany({
@@ -395,6 +395,17 @@ export class QaProductivityService {
           );
         }
       }
+    }
+
+    // Delete lookupAgents that are not in the new payload (synchronize with Excel upload)
+    if (processedAgents.size > 0) {
+      transactions.push(
+        this.prisma.lookupAgent.deleteMany({
+          where: {
+            namaAgent: { notIn: Array.from(processedAgents) }
+          }
+        })
+      );
     }
 
     await this.prisma.$transaction(transactions);
