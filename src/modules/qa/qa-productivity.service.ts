@@ -163,10 +163,9 @@ export class QaProductivityService {
       const aTarget = agentTargets.get(agent) || { peak1: 0, peak2: 0, peak3: 0, monthly: 0 } as any;
       const tappings = monthlyTappings.filter(t => t.agent === agent);
       
-      // Skip agents with 0 tappings if they are not specifically targeted to avoid clutter?
-      // Actually, let's include them if they have tappings or if they exist in mapping
-      if (tappings.length === 0 && !agentTargets.has(agent)) {
-         continue; // Only show agents that have either tapping activity or a defined target
+      // Only show agents that have a defined target (exist in the uploaded Excel file)
+      if (!agentTargets.has(agent)) {
+         continue; 
       }
       
       const p1 = tappings.filter(t => t.peak === 1).length;
