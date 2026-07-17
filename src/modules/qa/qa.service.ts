@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -25,6 +25,119 @@ export class QaService {
     }
 
     return formTapping;
+  }
+
+  async getPendingTickets(
+    page: number, 
+    limit: number, 
+    year?: string, 
+    month?: string, 
+    agent?: string,
+    peak?: string,
+    search?: string,
+    filters?: string,
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc',
+    user?: any
+  ) {
+    try {
+      const parsedPage = isNaN(page) || page < 1 ? 1 : page;
+      const parsedLimit = isNaN(limit) || limit < 1 ? 100 : limit;
+      const skip = (parsedPage - 1) * parsedLimit;
+
+      const andConditions: any[] = [];
+
+      if (year && month) {
+        const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
+        andConditions.push({
+          createdTicket: {
+            gte: startDate,
+            lte: endDate,
+          }
+        });
+      }
+
+      // Restrict tickets based on the user's role and identity
+      if (user) {
+        if (user.role === 'TL_QC' || user.role === 'QC') {
+          // TL_QC / QC can only see tickets where they are assigned as the 'tapper'
+          andConditions.push({
+            tapper: {
+              equals: user.name,
+              mode: 'insensitive'
+            }
+          });
+        }
+        // ADMIN can see everything, no additional filter
+      }
+
+      if (agent) {
+        andConditions.push({
+          agent: {
+            equals: agent,
+            mode: 'insensitive',
+          }
+        });
+      }
+
+      if (peak === 'PEAK') {
+        andConditions.push({ handlingTime: { gt: '00:05:00' } });
+      } else if (peak === 'NON-PEAK') {
+        andConditions.push({ handlingTime: { lte: '00:05:00' } });
+      }
+
+      if (search) {
+        andConditions.push({
+          OR: [
+            { idTiket: { contains: search, mode: 'insensitive' } },
+            { agent: { contains: search, mode: 'insensitive' } }
+          ]
+        });
+      }
+
+      if (filters) {
+        try {
+          const parsedFilters = JSON.parse(filters);
+          Object.keys(parsedFilters).forEach(key => {
+            const val = parsedFilters[key];
+            if (val && Array.isArray(val) && val.length > 0) {
+              andConditions.push({ [key]: { in: val } });
+            } else if (val) {
+              andConditions.push({ [key]: { contains: val, mode: 'insensitive' } });
+            }
+          });
+        } catch (e) {}
+      }
+
+      const where = andConditions.length > 0 ? { AND: andConditions } : {};
+
+      let orderBy: any = { createdTicket: 'desc' };
+      if (sortBy) {
+        orderBy = { [sortBy]: sortOrder || 'asc' };
+      }
+
+      const [total, data] = await Promise.all([
+        this.prisma.qaTicket.count({ where }),
+        this.prisma.qaTicket.findMany({
+          where,
+          skip,
+          take: parsedLimit,
+          orderBy,
+        }),
+      ]);
+
+      return {
+        data,
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
+      };
+    } catch (e: any) {
+      console.error('CRITICAL ERROR IN getPendingTickets:', e);
+      throw new InternalServerErrorException(e.message || e.toString());
+    }
   }
 
   async getAllFormTapping(page = 1, limit = 10, search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
@@ -947,171 +1060,176 @@ export class QaService {
   }
 
   async syncTicketsFromOca(startDate: string, endDate: string) {
-    if (!startDate || !endDate) {
-      throw new BadRequestException('startDate and endDate are required');
-    }
-
-    // Parse dates to include full day range
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    // Fetch RawOca tickets within the date range
-    const rawOcaTickets = await this.prisma.rawOca.findMany({
-      where: {
-        ticketCreated: {
-          gte: start,
-          lte: end,
-        }
+    try {
+      if (!startDate || !endDate) {
+        throw new BadRequestException('startDate and endDate are required');
       }
-    });
 
-    if (rawOcaTickets.length === 0) {
-      return { message: 'No tickets found in OCA for the selected date range', count: 0 };
-    }
+      // Parse dates to include full day range
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
 
-    // Fetch LookupAgent maps
-    const agents = await this.prisma.lookupAgent.findMany();
-    const agentMap = new Map<string, { teamLeader: string, tapper: string }>();
-    for (const agent of agents) {
-      if (agent.namaAgent) {
-        agentMap.set(agent.namaAgent.toLowerCase().trim(), {
-          teamLeader: agent.teamLeader || '',
-          tapper: agent.tapper || '',
-        });
-      }
-    }
-
-    // Process and filter duplicates
-    const uniqueIds = rawOcaTickets.map(t => t.ticketNumber);
-    
-    const existingPending: any[] = [];
-    const existingTapped: any[] = [];
-    
-    // Chunk the uniqueIds to avoid Postgres parameter limit (32767)
-    const CHUNK_SIZE = 10000;
-    for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
-      const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
-      
-      const pendingChunk = await this.prisma.qaTicket.findMany({
-        where: { idTiket: { in: chunk } },
-        select: { id: true, idTiket: true, handlingTime: true }
-      });
-      existingPending.push(...pendingChunk);
-
-      const tappedChunk = await this.prisma.qaFormTapping.findMany({
-        where: { idTiket: { in: chunk } },
-        select: { idTiket: true }
-      });
-      existingTapped.push(...tappedChunk);
-    }
-
-    const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
-    const existingTappedIds = new Set(existingTapped.map(t => t.idTiket));
-
-    const newTicketsToInsert: any[] = [];
-    const ticketsToUpdate: any[] = []; // For updating missing handlingTime
-    
-    for (const raw of rawOcaTickets) {
-      let bestHandlingTime = raw.ticketDuration || '';
-      
-      if (!bestHandlingTime || bestHandlingTime === '-' || bestHandlingTime.trim() === '') {
-        if (raw.totalResolutionTime && String(raw.totalResolutionTime).includes(':') && !String(raw.totalResolutionTime).includes('T')) {
-          bestHandlingTime = raw.totalResolutionTime;
-        } else if (raw.resolveTime && raw.ticketCreated) {
-          const diffMs = new Date(raw.resolveTime).getTime() - new Date(raw.ticketCreated).getTime();
-          if (diffMs >= 0) {
-            const diffSec = Math.floor(diffMs / 1000);
-            const h = String(Math.floor(diffSec / 3600)).padStart(2, '0');
-            const m = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
-            const s = String(diffSec % 60).padStart(2, '0');
-            bestHandlingTime = `${h}:${m}:${s}`;
+      // Fetch RawOca tickets within the date range
+      const rawOcaTickets = await this.prisma.rawOca.findMany({
+        where: {
+          ticketCreated: {
+            gte: start,
+            lte: end,
           }
         }
-      }
-      
-      if (bestHandlingTime === '-') bestHandlingTime = '';
-      
-      if (existingTappedIds.has(raw.ticketNumber)) {
-        continue; // Skip if already tapped
+      });
+
+      if (rawOcaTickets.length === 0) {
+        return { message: 'No tickets found in OCA for the selected date range', count: 0 };
       }
 
-      if (existingPendingIds.has(raw.ticketNumber)) {
-        // If it exists but we can check if we want to update it
-        // We'll just run a bulk update for existing pending tickets that have no handling time
-        const existingTicket = existingPending.find(t => t.idTiket === raw.ticketNumber);
-        if (existingTicket && (!existingTicket.handlingTime || existingTicket.handlingTime === '' || existingTicket.handlingTime === '-')) {
-          if (bestHandlingTime && bestHandlingTime !== '-') {
-            ticketsToUpdate.push({
-              id: existingTicket.id,
-              handlingTime: bestHandlingTime
-            });
+      // Fetch LookupAgent maps
+      const agents = await this.prisma.lookupAgent.findMany();
+      const agentMap = new Map<string, { teamLeader: string, tapper: string }>();
+      for (const agent of agents) {
+        if (agent.namaAgent) {
+          agentMap.set(agent.namaAgent.toLowerCase().trim(), {
+            teamLeader: agent.teamLeader || '',
+            tapper: agent.tapper || '',
+          });
+        }
+      }
+
+      // Process and filter duplicates
+      const uniqueIds = rawOcaTickets.map(t => t.ticketNumber);
+      
+      const existingPending: any[] = [];
+      const existingTapped: any[] = [];
+      
+      // Chunk the uniqueIds to avoid Postgres parameter limit (32767)
+      const CHUNK_SIZE = 10000;
+      for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+        const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
+        
+        const pendingChunk = await this.prisma.qaTicket.findMany({
+          where: { idTiket: { in: chunk } },
+          select: { id: true, idTiket: true, handlingTime: true }
+        });
+        existingPending.push(...pendingChunk);
+
+        const tappedChunk = await this.prisma.qaFormTapping.findMany({
+          where: { idTiket: { in: chunk } },
+          select: { idTiket: true }
+        });
+        existingTapped.push(...tappedChunk);
+      }
+
+      const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
+      const existingTappedIds = new Set(existingTapped.map(t => t.idTiket));
+
+      const newTicketsToInsert: any[] = [];
+      const ticketsToUpdate: any[] = []; // For updating missing handlingTime
+      
+      for (const raw of rawOcaTickets) {
+        let bestHandlingTime = raw.ticketDuration || '';
+        
+        if (!bestHandlingTime || bestHandlingTime === '-' || bestHandlingTime.trim() === '') {
+          if (raw.totalResolutionTime && String(raw.totalResolutionTime).includes(':') && !String(raw.totalResolutionTime).includes('T')) {
+            bestHandlingTime = raw.totalResolutionTime;
+          } else if (raw.resolveTime && raw.ticketCreated) {
+            const diffMs = new Date(raw.resolveTime).getTime() - new Date(raw.ticketCreated).getTime();
+            if (diffMs >= 0) {
+              const diffSec = Math.floor(diffMs / 1000);
+              const h = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+              const m = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+              const s = String(diffSec % 60).padStart(2, '0');
+              bestHandlingTime = `${h}:${m}:${s}`;
+            }
           }
         }
-        continue;
-      }
+        
+        if (bestHandlingTime === '-') bestHandlingTime = '';
+        
+        if (existingTappedIds.has(raw.ticketNumber)) {
+          continue; // Skip if already tapped
+        }
 
-      // In OCA, resolvedBy is sometimes literally "agent". We should use assignee in that case.
-      const resolvedBy = raw.resolvedBy === 'agent' ? null : raw.resolvedBy;
-      const agentName = resolvedBy || raw.assignee || raw.reporter || '';
-      const agentInfo = agentMap.get(agentName.toLowerCase().trim()) || { teamLeader: '', tapper: '' };
+        if (existingPendingIds.has(raw.ticketNumber)) {
+          // If it exists but we can check if we want to update it
+          // We'll just run a bulk update for existing pending tickets that have no handling time
+          const existingTicket = existingPending.find(t => t.idTiket === raw.ticketNumber);
+          if (existingTicket && (!existingTicket.handlingTime || existingTicket.handlingTime === '' || existingTicket.handlingTime === '-')) {
+            if (bestHandlingTime && bestHandlingTime !== '-') {
+              ticketsToUpdate.push({
+                id: existingTicket.id,
+                handlingTime: bestHandlingTime
+              });
+            }
+          }
+          continue;
+        }
 
-      const inOutSlaStr = raw.inSla === true ? 'IN SLA' : (raw.inSla === false ? 'OUT SLA' : 'NO SLA');
+        // In OCA, resolvedBy is sometimes literally "agent". We should use assignee in that case.
+        const resolvedBy = raw.resolvedBy === 'agent' ? null : raw.resolvedBy;
+        const agentName = resolvedBy || raw.assignee || raw.reporter || '';
+        const agentInfo = agentMap.get(agentName.toLowerCase().trim()) || { teamLeader: '', tapper: '' };
 
-      newTicketsToInsert.push({
-        idTiket: raw.ticketNumber,
-        agent: agentName,
-        tapper: agentInfo.tapper,
-        teamLeader: agentInfo.teamLeader,
-        channel: raw.channel || '',
-        jenisInteraksi: raw.category || '',
-        kipLevel2: raw.subCategory || '',
-        kipLevel3: raw.detailCategory || '',
-        inOutSla: inOutSlaStr,
-        projectId: raw.projectId || '',
-        perusahaan: raw.namaPerusahaan || '',
-        customerRequests: raw.ticketSubject || raw.description || '',
-        agentResponse: raw.converse || '',
-        handlingTime: bestHandlingTime,
-        msisdn: raw.jumlahMsisdn || '',
-        createdTicket: raw.ticketCreated,
-      });
-    }
+        const inOutSlaStr = raw.inSla === true ? 'IN SLA' : (raw.inSla === false ? 'OUT SLA' : 'NO SLA');
 
-    let updatedCount = 0;
-    if (ticketsToUpdate.length > 0) {
-      for (const t of ticketsToUpdate) {
-        await this.prisma.qaTicket.update({
-          where: { id: t.id },
-          data: { handlingTime: t.handlingTime }
+        newTicketsToInsert.push({
+          idTiket: raw.ticketNumber,
+          agent: agentName,
+          tapper: agentInfo.tapper,
+          teamLeader: agentInfo.teamLeader,
+          channel: raw.channel || '',
+          jenisInteraksi: raw.category || '',
+          kipLevel2: raw.subCategory || '',
+          kipLevel3: raw.detailCategory || '',
+          inOutSla: inOutSlaStr,
+          projectId: raw.projectId || '',
+          perusahaan: raw.namaPerusahaan || '',
+          customerRequests: raw.ticketSubject || raw.description || '',
+          agentResponse: raw.converse || '',
+          handlingTime: bestHandlingTime,
+          msisdn: raw.jumlahMsisdn || '',
+          createdTicket: raw.ticketCreated,
         });
-        updatedCount++;
       }
-    }
 
-    if (newTicketsToInsert.length === 0) {
-      let msg = `Synced 0 new tickets (All ${rawOcaTickets.length} tickets already exist in QA system)`;
-      if (updatedCount > 0) msg += `. Updated ${updatedCount} existing tickets with AHT.`;
-      return { 
-        message: msg, 
-        count: 0 
+      let updatedCount = 0;
+      if (ticketsToUpdate.length > 0) {
+        for (const t of ticketsToUpdate) {
+          await this.prisma.qaTicket.update({
+            where: { id: t.id },
+            data: { handlingTime: t.handlingTime }
+          });
+          updatedCount++;
+        }
+      }
+
+      if (newTicketsToInsert.length === 0) {
+        let msg = `Synced 0 new tickets (All ${rawOcaTickets.length} tickets already exist in QA system)`;
+        if (updatedCount > 0) msg += `. Updated ${updatedCount} existing tickets with AHT.`;
+        return { 
+          message: msg, 
+          count: 0 
+        };
+      }
+
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < newTicketsToInsert.length; i += BATCH_SIZE) {
+        const batch = newTicketsToInsert.slice(i, i + BATCH_SIZE);
+        await this.prisma.qaTicket.createMany({ data: batch });
+      }
+
+      let successMsg = `Successfully synced ${newTicketsToInsert.length} new tickets from OCA!`;
+      if (updatedCount > 0) successMsg += ` Updated ${updatedCount} existing tickets.`;
+
+      return {
+        message: successMsg,
+        count: newTicketsToInsert.length
       };
+    } catch (e: any) {
+      console.error('CRITICAL ERROR IN syncTicketsFromOca:', e);
+      throw new InternalServerErrorException(e.message || e.toString());
     }
-
-    const BATCH_SIZE = 1000;
-    for (let i = 0; i < newTicketsToInsert.length; i += BATCH_SIZE) {
-      const batch = newTicketsToInsert.slice(i, i + BATCH_SIZE);
-      await this.prisma.qaTicket.createMany({ data: batch });
-    }
-
-    let successMsg = `Successfully synced ${newTicketsToInsert.length} new tickets from OCA!`;
-    if (updatedCount > 0) successMsg += ` Updated ${updatedCount} existing tickets.`;
-
-    return {
-      message: successMsg,
-      count: newTicketsToInsert.length
-    };
   }
   async updateKomitmen(id: string, komitmen: string, user: any) {
     const record = await this.prisma.qaFormTapping.findUnique({
