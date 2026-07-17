@@ -343,7 +343,7 @@ export class QaProductivityService {
     const lookupMap = new Map<string, any>();
     allLookupAgents.forEach(a => { if (a.namaAgent) lookupMap.set(a.namaAgent.toLowerCase().trim(), a); });
 
-    const newTargetSettings = [];
+    const newTargetSettings: any[] = [];
     const processedQcs = new Set<string>();
     for (const qc of qcs) {
       if (processedQcs.has(qc.name)) continue;
@@ -352,8 +352,8 @@ export class QaProductivityService {
     }
 
     const processedAgents = new Set<string>();
-    const lookupUpdates = [];
-    const lookupCreates = [];
+    const lookupUpdates: any[] = [];
+    const lookupCreates: any[] = [];
     
     for (const ag of agents) {
       const existingLookup = findAgentMatch(ag.name, lookupMap);
