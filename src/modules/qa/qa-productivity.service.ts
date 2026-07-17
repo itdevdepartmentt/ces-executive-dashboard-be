@@ -93,7 +93,8 @@ export class QaProductivityService {
     const qcProductivity: any[] = [];
     for (const [tapper, agentSet] of qcAgentMap.entries()) {
       const agents = Array.from(agentSet);
-      const qcTarget = qcTargets.get(tapper) || { daily: 0, peak1: 0, peak2: 0, peak3: 0, monthly: 0 } as any;
+      const qcTarget = qcTargets.get(tapper);
+      if (!qcTarget) continue; // Only show QCs that have a defined target
       
       const tappings = monthlyTappings.filter(t => t.tapper === tapper);
       const dailyTappings = tappings.filter(t => t.createdAt >= targetDateStart && t.createdAt <= targetDateEnd);
@@ -221,9 +222,13 @@ export class QaProductivityService {
     }
     // TL_QC and ADMIN see all data (no filter needed)
 
-    // Realtime overview (Split between Eksekutor and All Channel/KIP)
+    // Realtime overview (Split by channel)
     let totalEksekutor = 0;
-    let totalAll = 0;
+    let totalChat = 0;
+    let totalCallCenter = 0;
+    let totalBillco = 0;
+    let totalEmailGs = 0;
+    let totalLainnya = 0;
     
     // Fetch all lookup agents to properly check group
     const allLookupAgents = await this.prisma.lookupAgent.findMany();
@@ -238,10 +243,20 @@ export class QaProductivityService {
     for (const t of filteredDailyTappings) {
       if (!t.agent) continue;
       const lookup = findAgentMatch(t.agent, agentGroupMap);
-      if (lookup && lookup.group && lookup.group.toLowerCase().includes('eksekutor')) {
+      const group = (lookup && lookup.group) ? lookup.group.toUpperCase() : '';
+      
+      if (group.includes('EKSEKUTOR')) {
         totalEksekutor++;
+      } else if (group.includes('CHAT')) {
+        totalChat++;
+      } else if (group.includes('CALL CENTER') || group === 'CC') {
+        totalCallCenter++;
+      } else if (group.includes('BILLCO')) {
+        totalBillco++;
+      } else if (group.includes('EMAIL GS') || group.includes('EMAIL')) {
+        totalEmailGs++;
       } else {
-        totalAll++;
+        totalLainnya++;
       }
     }
 
@@ -254,9 +269,14 @@ export class QaProductivityService {
     }
 
     const realtimeOverview = {
-      totalEksekutor: totalEksekutor,
+      totalEksekutor,
       targetEksekutor: Math.floor(totalQcDailyTarget * 0.8), // e.g. 80% as shown in UI
-      totalAll: totalAll,
+      totalChat,
+      totalCallCenter,
+      totalBillco,
+      totalEmailGs,
+      totalLainnya,
+      totalAll: totalEksekutor + totalChat + totalCallCenter + totalBillco + totalEmailGs + totalLainnya,
       targetAll: totalQcDailyTarget,
     };
 
@@ -402,12 +422,12 @@ export class QaProductivityService {
     return { success: true };
   }
 
-  async bulkDeleteSettings(agentNames: string[]) {
+  async bulkDeleteSettings(agentNames: string[], type: string = 'AGENT') {
     if (!agentNames || agentNames.length === 0) return { success: true };
     await this.prisma.qaTargetSetting.deleteMany({
       where: {
         name: { in: agentNames },
-        type: 'AGENT',
+        type: type,
       }
     });
     return { success: true };

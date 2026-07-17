@@ -37,8 +37,8 @@ export class QaProductivityController {
 
   @Post('settings/bulk-delete')
   @Roles('ADMIN', 'TL_QC')
-  bulkDeleteSettings(@Body() body: { agentNames: string[] }) {
-    return this.qaProductivityService.bulkDeleteSettings(body.agentNames);
+  bulkDeleteSettings(@Body() body: { agentNames: string[], type?: string }) {
+    return this.qaProductivityService.bulkDeleteSettings(body.agentNames, body.type);
   }
 
   @Post('settings/parse-excel')
