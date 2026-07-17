@@ -532,6 +532,7 @@ model QaFormTapping {
   startTime             DateTime? @map("start_time")
   submitTime            DateTime? @map("submit_time")
   komitmen              String    @default("")
+  komitmenStatus        String    @default("NONE") @map("komitmen_status")
   createdTicket         DateTime? @map("created_ticket")
   msisdn                String?   @map("msisdn")
 

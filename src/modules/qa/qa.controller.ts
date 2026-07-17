@@ -206,6 +206,18 @@ export class QaController {
     return this.qaService.updateKomitmen(id, komitmen, req.user);
   }
 
+  @Patch(':id/komitmen/approve')
+  @Roles('ADMIN', 'TL')
+  approveKomitmen(@Param('id') id: string, @Req() req: any) {
+    return this.qaService.approveKomitmen(id, req.user);
+  }
+
+  @Patch(':id/komitmen/reject')
+  @Roles('ADMIN', 'TL')
+  rejectKomitmen(@Param('id') id: string, @Req() req: any) {
+    return this.qaService.rejectKomitmen(id, req.user);
+  }
+
   @Delete(':id')
   @Roles('ADMIN', 'QC', 'TL_QC')
   remove(@Param('id') id: string) {

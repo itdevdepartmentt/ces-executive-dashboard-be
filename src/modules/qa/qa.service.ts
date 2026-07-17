@@ -653,6 +653,7 @@ export class QaService {
         peak: true,
         createdAt: true,
         komitmen: true,
+        komitmenStatus: true,
         createdDate: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -725,9 +726,20 @@ export class QaService {
           peak: row.peak,
           idTiket: row.idTiket,
           score: totalScore,
-          komitmen: (user?.role === 'USER' && user?.name !== row.agent) 
-            ? (row.komitmen ? '[Komitmen Disembunyikan]' : null) 
-            : row.komitmen,
+          komitmenStatus: row.komitmenStatus,
+          komitmen: (() => {
+            const isAgent = user?.name === row.agent;
+            const isTl = user?.name === row.teamLeader;
+            const isPending = row.komitmenStatus === 'PENDING';
+            
+            if (isPending && !isAgent && !isTl) {
+              return '[Menunggu Approval TL]';
+            }
+            if (user?.role === 'USER' && !isAgent) {
+              return row.komitmen ? '[Komitmen Disembunyikan]' : null;
+            }
+            return row.komitmen;
+          })(),
         });
       } else {
         nonNcDetails.push({
@@ -1179,7 +1191,35 @@ export class QaService {
 
     return this.prisma.qaFormTapping.update({
       where: { id },
-      data: { komitmen },
+      data: { komitmen, komitmenStatus: 'PENDING' },
+    });
+  }
+
+  async approveKomitmen(id: string, user: any) {
+    const record = await this.prisma.qaFormTapping.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('Data tidak ditemukan');
+
+    if (user.role === 'TL' && record.teamLeader !== user.name) {
+      throw new UnauthorizedException('Anda tidak berhak melakukan persetujuan untuk agen ini');
+    }
+
+    return this.prisma.qaFormTapping.update({
+      where: { id },
+      data: { komitmenStatus: 'APPROVED' },
+    });
+  }
+
+  async rejectKomitmen(id: string, user: any) {
+    const record = await this.prisma.qaFormTapping.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('Data tidak ditemukan');
+
+    if (user.role === 'TL' && record.teamLeader !== user.name) {
+      throw new UnauthorizedException('Anda tidak berhak melakukan penolakan untuk agen ini');
+    }
+
+    return this.prisma.qaFormTapping.update({
+      where: { id },
+      data: { komitmenStatus: 'REJECTED' },
     });
   }
 }
