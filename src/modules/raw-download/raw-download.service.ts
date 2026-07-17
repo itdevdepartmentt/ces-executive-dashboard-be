@@ -58,7 +58,7 @@ export class RawDownloadService {
         if (type === 'news-log') {
           row['No'] = globalRowNumber++;
         }
-        const formattedRow = this.omitExcludedColumns(row);
+        const formattedRow = this.omitExcludedColumns(row, type);
 
         if (!hasWrittenHeader) {
           headers = Object.keys(formattedRow);
@@ -116,7 +116,32 @@ export class RawDownloadService {
       return this.prisma.rawOca.findMany({ where, orderBy: { id: 'asc' }, skip, take });
     }
 
-    return this.prisma.rawCall.findMany({ where, orderBy: { id: 'asc' }, skip, take });
+    return this.prisma.rawCall.findMany({
+      where,
+      orderBy: { id: 'asc' },
+      skip,
+      take,
+      select: {
+        kipId: true,
+        appId: true,
+        areaName: true,
+        brand: true,
+        employeeCode: true,
+        employeeName: true,
+        msisdn: true,
+        notes: true,
+        regName: true,
+        service: true,
+        topicReason1: true,
+        topicReason2: true,
+        topicResult: true,
+        unitName: true,
+        unitType: true,
+        updateStamp: true,
+        userId: true,
+        isFcrRealisasi: true,
+      },
+    });
   }
 
   private async getNewsLogRows(dateRange: DateRange, skip: number, take: number) {
@@ -230,12 +255,45 @@ export class RawDownloadService {
     };
   }
 
-  private omitExcludedColumns(row: Record<string, unknown>): Record<string, unknown> {
+  private omitExcludedColumns(row: Record<string, unknown>, type?: ExportType): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(row)) {
-      if (!EXCLUDED_COLUMNS.has(key)) {
-        result[key] = this.normalizeCellValue(value);
+    if (type === 'call') {
+      const callColumnOrder = [
+        'kipId',
+        'appId',
+        'areaName',
+        'brand',
+        'employeeCode',
+        'employeeName',
+        'msisdn',
+        'notes',
+        'regName',
+        'service',
+        'topicReason1',
+        'topicReason2',
+        'topicResult',
+        'unitName',
+        'unitType',
+        'updateStamp',
+        'userId',
+        'isFcrRealisasi',
+      ];
+      for (const col of callColumnOrder) {
+        if (col in row && !EXCLUDED_COLUMNS.has(col)) {
+          result[col] = this.normalizeCellValue(row[col]);
+        }
+      }
+      for (const [key, value] of Object.entries(row)) {
+        if (!callColumnOrder.includes(key) && !EXCLUDED_COLUMNS.has(key)) {
+          result[key] = this.normalizeCellValue(value);
+        }
+      }
+    } else {
+      for (const [key, value] of Object.entries(row)) {
+        if (!EXCLUDED_COLUMNS.has(key)) {
+          result[key] = this.normalizeCellValue(value);
+        }
       }
     }
 

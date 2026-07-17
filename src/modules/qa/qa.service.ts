@@ -985,16 +985,29 @@ export class QaService {
 
     // Process and filter duplicates
     const uniqueIds = rawOcaTickets.map(t => t.ticketNumber);
-    const existingPending = await this.prisma.qaTicket.findMany({
-      where: { idTiket: { in: uniqueIds } },
-      select: { id: true, idTiket: true, handlingTime: true }
-    });
-    const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
+    
+    const existingPending: any[] = [];
+    const existingTapped: any[] = [];
+    
+    // Chunk the uniqueIds to avoid Postgres parameter limit (32767)
+    const CHUNK_SIZE = 10000;
+    for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
+      
+      const pendingChunk = await this.prisma.qaTicket.findMany({
+        where: { idTiket: { in: chunk } },
+        select: { id: true, idTiket: true, handlingTime: true }
+      });
+      existingPending.push(...pendingChunk);
 
-    const existingTapped = await this.prisma.qaFormTapping.findMany({
-      where: { idTiket: { in: uniqueIds } },
-      select: { idTiket: true }
-    });
+      const tappedChunk = await this.prisma.qaFormTapping.findMany({
+        where: { idTiket: { in: chunk } },
+        select: { idTiket: true }
+      });
+      existingTapped.push(...tappedChunk);
+    }
+
+    const existingPendingIds = new Set(existingPending.map(t => t.idTiket));
     const existingTappedIds = new Set(existingTapped.map(t => t.idTiket));
 
     const newTicketsToInsert: any[] = [];
