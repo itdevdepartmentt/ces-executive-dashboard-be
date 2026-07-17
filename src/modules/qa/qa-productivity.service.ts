@@ -204,23 +204,9 @@ export class QaProductivityService {
     qcProductivity.sort((a, b) => a.tapper.localeCompare(b.tapper));
     agentPerformance.sort((a, b) => a.agent.localeCompare(b.agent));
 
-    // Role-based filtering: QC only sees their own data
+    // Tables will show ALL data regardless of role, as requested by user
     let filteredQcProductivity = qcProductivity;
     let filteredAgentPerformance = agentPerformance;
-
-    if (user && user.role === 'QC') {
-      // QC can only see their own productivity
-      filteredQcProductivity = qcProductivity.filter(qc => qc.tapper === user.name);
-      // QC can only see agents assigned to them
-      const ownAgentNames = new Set<string>();
-      filteredQcProductivity.forEach(qc => {
-        qc.agentNames.split(', ').forEach((name: string) => {
-          if (name.trim()) ownAgentNames.add(name.trim());
-        });
-      });
-      filteredAgentPerformance = agentPerformance.filter(ap => ownAgentNames.has(ap.agent));
-    }
-    // TL_QC and ADMIN see all data (no filter needed)
 
     // Realtime overview (Split by channel)
     let totalEksekutor = 0;
