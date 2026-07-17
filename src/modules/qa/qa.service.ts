@@ -408,56 +408,7 @@ export class QaService {
 
   // --- QaTicket (Pending Tickets) ---
 
-  async getPendingTickets(page = 1, limit = 10, search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
-    const skip = (page - 1) * limit;
 
-    const andConditions: any[] = [];
-
-    if (search) {
-      andConditions.push({
-        OR: [
-          { idTiket: { contains: search, mode: 'insensitive' } },
-          { agent: { contains: search, mode: 'insensitive' } },
-          { tapper: { contains: search, mode: 'insensitive' } },
-        ],
-      });
-    }
-
-    if (filters) {
-      try {
-        const parsedFilters = JSON.parse(filters);
-        Object.keys(parsedFilters).forEach(key => {
-          const val = parsedFilters[key];
-          if (val && Array.isArray(val) && val.length > 0) {
-            andConditions.push({ [key]: { in: val } });
-          } else if (val) {
-            andConditions.push({ [key]: { contains: val, mode: 'insensitive' } });
-          }
-        });
-      } catch (e) {}
-    }
-
-    const whereClause = andConditions.length > 0 ? { AND: andConditions } : {};
-
-    const [total, data] = await Promise.all([
-      this.prisma.qaTicket.count({ where: whereClause }),
-      this.prisma.qaTicket.findMany({
-        where: whereClause,
-        skip,
-        take: limit,
-        orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
-      }),
-    ]);
-
-    return {
-      data,
-      meta: {
-        total,
-        page,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
 
   async getTicketFilterOptions(user?: any) {
     let whereClause: any = {};
