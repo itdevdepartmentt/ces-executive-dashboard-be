@@ -39,11 +39,15 @@ export class QaController {
     return this.qaService.getPendingTickets(
       parsedPage,
       parsedLimit,
+      undefined, // year
+      undefined, // month
+      undefined, // agent
+      undefined, // peak
       search,
       filters,
-      req.user,
       sortBy,
-      sortOrder
+      sortOrder,
+      req.user
     );
   }
 
