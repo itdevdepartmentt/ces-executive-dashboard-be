@@ -79,9 +79,9 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     HttpModule,
     AuthModule,
     PrismaModule,
-    UploadModule,
+    // UploadModule, // Disabled temporarily to stop Redis Upstash limits
     DashboardModule,
-    SchedulerModule,
+    // SchedulerModule, // Disabled temporarily to stop Redis Upstash limits
     IncidentModule,
     NewsModule,
     LookupManagementModule,

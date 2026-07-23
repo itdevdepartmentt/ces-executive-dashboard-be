@@ -219,7 +219,30 @@ export class QaProductivityService {
 
       // Find the tapper and group for this agent from either tapping data or lookup
       const lookupAgentInfo = lookupAgents.find(a => a.namaAgent === agent);
-      const tapperForAgent = tappings.find(t => t.tapper)?.tapper || lookupAgentInfo?.tapper || 'Unknown Tapper';
+      
+      const tapperPeaks = new Map<string, Set<number>>();
+      tappings.forEach(t => {
+        if (t.tapper && t.peak) {
+          if (!tapperPeaks.has(t.tapper)) {
+            tapperPeaks.set(t.tapper, new Set());
+          }
+          tapperPeaks.get(t.tapper)!.add(t.peak);
+        }
+      });
+      
+      let tapperForAgent = '';
+      if (tapperPeaks.size > 0) {
+        const labels: string[] = [];
+        tapperPeaks.forEach((peaks, tapperName) => {
+          const sortedPeaks = Array.from(peaks).sort();
+          const peakStr = sortedPeaks.map(p => `P${p}`).join(', ');
+          labels.push(`${tapperName} (${peakStr})`);
+        });
+        tapperForAgent = labels.join(' | ');
+      } else {
+        tapperForAgent = lookupAgentInfo?.tapper || 'Unknown Tapper';
+      }
+
       const groupForAgent = lookupAgentInfo?.group || '';
 
       agentPerformance.push({
