@@ -3,10 +3,14 @@ import { PrismaService } from 'prisma/prisma.service';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
 import * as ExcelJS from 'exceljs';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class QaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async createFormTapping(data: any) {
     const { qaTicketId, ...formTappingData } = data;
@@ -25,6 +29,38 @@ export class QaService {
       });
     }
 
+    // Calculate total score to determine if it's NC (Non-Compliant)
+    const totalScore = 
+      (formTapping.scoreValiditas || 0) + 
+      (formTapping.scoreServiceLevel || 0) + 
+      (formTapping.scoreKalimat || 0) + 
+      (formTapping.scoreResponTime || 0) + 
+      (formTapping.scoreDokumentasi || 0);
+
+    const isNC = totalScore < 100 && formTapping.status !== 'Cancel';
+
+    console.log(`[QA_SERVICE] Tapping ID: ${formTapping.id}, TotalScore: ${totalScore}, isNC: ${isNC}, TL: ${formTapping.teamLeader}`);
+
+    // Send notification to Agent (ONLY if score < 100 / NC)
+    if (formTapping.agent && isNC) {
+      await this.notificationsService.createForUserByName(formTapping.agent, {
+        type: 'QA_TAPPING_AGENT',
+        title: 'Tapping NC Baru',
+        message: `Tapping NC baru masuk untuk tiket ${formTapping.idTiket}. Silakan isi komitmen.`,
+        link: `/quality-assurance/detail-tapping/${formTapping.id}`,
+      });
+    }
+
+    // Send notification to TL (ONLY if score < 100 / NC)
+    if (formTapping.teamLeader && isNC) {
+      await this.notificationsService.createForUserByName(formTapping.teamLeader, {
+        type: 'QA_TAPPING_TL',
+        title: 'Tapping NC Agent Baru',
+        message: `Agent ${formTapping.agent} mendapat tapping NC dari ${formTapping.tapper}. Pantau pengisian komitmennya.`,
+        link: `/quality-assurance/detail-tapping/${formTapping.id}`,
+      });
+    }
+
     return formTapping;
   }
 
@@ -33,6 +69,16 @@ export class QaService {
       const skip = (page - 1) * limit;
 
       const andConditions: any[] = [];
+
+      if (user) {
+        if (user.role === 'QC') {
+          andConditions.push({ tapper: user.name });
+        } else if (user.role === 'USER') {
+          andConditions.push({ agent: user.name });
+        } else if (user.role === 'TL') {
+          andConditions.push({ teamLeader: user.name });
+        }
+      }
 
       if (search) {
         andConditions.push({
@@ -93,8 +139,14 @@ export class QaService {
     
     const andConditions: any[] = [];
     
-    if (user && user.role === 'QC') {
-      andConditions.push({ tapper: user.name });
+    if (user) {
+      if (user.role === 'QC') {
+        andConditions.push({ tapper: user.name });
+      } else if (user.role === 'USER') {
+        andConditions.push({ agent: user.name });
+      } else if (user.role === 'TL') {
+        andConditions.push({ teamLeader: user.name });
+      }
     }
 
     if (search) {
@@ -263,6 +315,8 @@ export class QaService {
       whereClause.agent = user.name;
     } else if (user?.role === 'QC') {
       whereClause.tapper = user.name;
+    } else if (user?.role === 'TL') {
+      whereClause.teamLeader = user.name;
     }
 
     const tappers = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } });
@@ -272,6 +326,7 @@ export class QaService {
     const kipLevel3s = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } });
     const jenisInteraksis = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } });
     const inOutSlas = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } });
+    const teamLeaders = await this.prisma.qaFormTapping.findMany({ where: whereClause, distinct: ['teamLeader'], select: { teamLeader: true } });
 
     return {
       tapper: tappers.map(t => t.tapper).filter(Boolean),
@@ -281,14 +336,21 @@ export class QaService {
       kipLevel3: kipLevel3s.map(k => k.kipLevel3).filter(Boolean),
       jenisInteraksi: jenisInteraksis.map(j => j.jenisInteraksi).filter(Boolean),
       inOutSla: inOutSlas.map(s => s.inOutSla).filter(Boolean),
+      teamLeader: teamLeaders.map(t => t.teamLeader).filter(Boolean),
     };
   }
 
   async exportAllFormTapping(search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const andConditions: any[] = [];
     
-    if (user && user.role === 'QC') {
-      andConditions.push({ tapper: user.name });
+    if (user) {
+      if (user.role === 'QC') {
+        andConditions.push({ tapper: user.name });
+      } else if (user.role === 'USER') {
+        andConditions.push({ agent: user.name });
+      } else if (user.role === 'TL') {
+        andConditions.push({ teamLeader: user.name });
+      }
     }
 
     if (search) {
@@ -358,6 +420,13 @@ export class QaService {
 
   async getTicketFilterOptions(user?: any) {
     let whereClause: any = {};
+    if (user?.role === 'USER') {
+      whereClause.agent = user.name;
+    } else if (user?.role === 'QC') {
+      whereClause.tapper = user.name;
+    } else if (user?.role === 'TL') {
+      whereClause.teamLeader = user.name;
+    }
 
     const tappers = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['tapper'], select: { tapper: true } });
     const agents = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['agent'], select: { agent: true } });
@@ -366,6 +435,7 @@ export class QaService {
     const kipLevel3s = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['kipLevel3'], select: { kipLevel3: true } });
     const jenisInteraksis = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['jenisInteraksi'], select: { jenisInteraksi: true } });
     const inOutSlas = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['inOutSla'], select: { inOutSla: true } });
+    const teamLeaders = await this.prisma.qaTicket.findMany({ where: whereClause, distinct: ['teamLeader'], select: { teamLeader: true } });
 
     return {
       tapper: tappers.map(t => t.tapper).filter(Boolean),
@@ -375,11 +445,22 @@ export class QaService {
       kipLevel3: kipLevel3s.map(k => k.kipLevel3).filter(Boolean),
       jenisInteraksi: jenisInteraksis.map(j => j.jenisInteraksi).filter(Boolean),
       inOutSla: inOutSlas.map(s => s.inOutSla).filter(Boolean),
+      teamLeader: teamLeaders.map(t => t.teamLeader).filter(Boolean),
     };
   }
 
   async exportPendingTickets(search?: string, filters?: string, user?: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     const andConditions: any[] = [];
+
+    if (user) {
+      if (user.role === 'QC') {
+        andConditions.push({ tapper: user.name });
+      } else if (user.role === 'USER') {
+        andConditions.push({ agent: user.name });
+      } else if (user.role === 'TL') {
+        andConditions.push({ teamLeader: user.name });
+      }
+    }
 
     if (search) {
       andConditions.push({
@@ -612,8 +693,15 @@ export class QaService {
   }
   
   // --- QA Score Dashboard & Detail Tapping ---
-  async getQaScoreDashboard(year?: string, month?: string, agent?: string, peak?: string, user?: any) {
+  async getQaScoreDashboard(year?: string, month?: string, agent?: string, peak?: string, user?: any, teamLeader?: string) {
     const whereClause: any = {};
+
+    // Role-based filtering
+    if (user?.role === 'USER') {
+      whereClause.agent = user.name;
+    } else if (user?.role === 'TL') {
+      whereClause.teamLeader = user.name;
+    }
 
     // Date filtering using createdAt
     if (year) {
@@ -627,6 +715,10 @@ export class QaService {
 
     if (agent) {
       whereClause.agent = agent;
+    }
+
+    if (teamLeader) {
+      whereClause.teamLeader = teamLeader;
     }
 
     if (peak) {
@@ -655,6 +747,8 @@ export class QaService {
         komitmen: true,
         komitmenStatus: true,
         createdDate: true,
+        kipLevel3: true,
+        channel: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -667,6 +761,7 @@ export class QaService {
       validitas: number; serviceLevel: number; kalimat: number;
       responTime: number; dokumentasi: number; count: number;
     }>();
+    const kip3NcMap = new Map<string, number>();
 
     // NC detail list (tickets where any parameter got less than max)
     const ncDetails: any[] = [];
@@ -714,6 +809,9 @@ export class QaService {
       if (isNC) {
         agentExisting.ncCount += 1;
         tlExisting.ncCount += 1;
+        
+        const kip3 = row.kipLevel3 || 'Unknown';
+        kip3NcMap.set(kip3, (kip3NcMap.get(kip3) || 0) + 1);
         
         ncDetails.push({
           id: row.id,
@@ -803,11 +901,18 @@ export class QaService {
         dokumentasi: parseFloat(((data.dokumentasi / data.count / 15) * 100).toFixed(2)),
       }));
 
+    // Format Top 3 NC KIP Level 3
+    const topKipNc = Array.from(kip3NcMap.entries())
+      .map(([kip, count]) => ({ kip, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
     return {
       monthlyScores,
       agentRanking,
       teamLeaderRanking,
       parameterAchievement,
+      topKipNc,
       ncDetails: ncDetails.slice(0, 500),
       nonNcDetails: nonNcDetails.slice(0, 500),
       totalSampling: allData.length,
@@ -817,7 +922,7 @@ export class QaService {
   async getDetailTapping(
     page = 1, limit = 100, year?: string, month?: string,
     agent?: string, peak?: string, search?: string, filters?: string,
-    sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', user?: any,
+    sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', user?: any, teamLeader?: string,
   ) {
     const skip = (page - 1) * limit;
     const whereClause: any = {};
@@ -839,6 +944,10 @@ export class QaService {
 
     if (agent && user?.role !== 'USER') {
       whereClause.agent = agent;
+    }
+
+    if (teamLeader) {
+      whereClause.teamLeader = teamLeader;
     }
 
     if (peak) {
@@ -968,13 +1077,18 @@ export class QaService {
 
   async getDetailTappingFilterOptions(user?: any) {
     const whereClause: any = {};
-    if (user?.role === 'QC') {
-      whereClause.tapper = user.name;
-    } else if (user?.role === 'USER') {
+
+    // Role-based filtering
+    if (user?.role === 'USER') {
       whereClause.agent = user.name;
+    } else if (user?.role === 'TL') {
+      whereClause.teamLeader = user.name;
+    } else if (user?.role === 'QC') {
+      whereClause.tapper = user.name;
     }
 
-    const [agents, years, peaks] = await Promise.all([
+
+    const [agents, years, peaks, teamLeaders] = await Promise.all([
       this.prisma.qaFormTapping.findMany({
         where: whereClause,
         distinct: ['agent'],
@@ -991,12 +1105,18 @@ export class QaService {
         select: { peak: true },
         orderBy: { peak: 'asc' },
       }),
+      this.prisma.qaFormTapping.findMany({
+        where: whereClause,
+        distinct: ['teamLeader'],
+        select: { teamLeader: true },
+      }),
     ]);
 
     return {
       agents: agents.map(a => a.agent).filter(Boolean),
       years: (years as any[]).map(y => y.year),
       peaks: peaks.map(p => p.peak),
+      teamLeaders: teamLeaders.map(t => t.teamLeader).filter(Boolean),
     };
   }
 
