@@ -13,8 +13,8 @@ export class QaReconciliationController {
 
   @Post()
   @Roles('TL')
-  create(@Body() createDto: CreateQaReconciliationDto) {
-    return this.qaReconciliationService.create(createDto);
+  create(@Body() createDto: CreateQaReconciliationDto, @Req() req: any) {
+    return this.qaReconciliationService.create(createDto, req.user);
   }
 
   @Get()
@@ -42,20 +42,26 @@ export class QaReconciliationController {
   }
 
   @Patch(':id/approve')
-  @Roles('QC', 'TL_QC')
-  approve(@Param('id') id: string, @Body() updateDto: UpdateQaReconciliationDto) {
-    return this.qaReconciliationService.approve(id, updateDto);
+  @Roles('QC', 'TL_QC', 'ADMIN', 'TL')
+  approve(@Param('id') id: string, @Req() req: any, @Body() updateDto: UpdateQaReconciliationDto) {
+    return this.qaReconciliationService.approve(id, req.user, updateDto);
   }
 
   @Patch(':id/reject')
-  @Roles('QC', 'TL_QC')
-  reject(@Param('id') id: string, @Body() updateDto: UpdateQaReconciliationDto) {
-    return this.qaReconciliationService.reject(id, updateDto);
+  @Roles('QC', 'TL_QC', 'ADMIN', 'TL')
+  reject(@Param('id') id: string, @Req() req: any, @Body() updateDto: UpdateQaReconciliationDto) {
+    return this.qaReconciliationService.reject(id, req.user, updateDto);
   }
 
   @Post(':id/reply')
   @Roles('TL', 'QC', 'TL_QC', 'ADMIN')
   reply(@Param('id') id: string, @Req() req: any, @Body('message') message: string) {
     return this.qaReconciliationService.reply(id, req.user, message);
+  }
+
+  @Get('notifications/summary')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
+  getNotificationSummary(@Req() req: any) {
+    return this.qaReconciliationService.getNotificationSummary(req.user);
   }
 }

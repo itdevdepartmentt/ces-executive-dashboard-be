@@ -45,6 +45,23 @@ export class QaProductivityService {
         agent: true,
         peak: true,
         createdAt: true,
+        tappingDuration: true,
+      }
+    });
+
+    // Get Reconciliations for the month to calculate SLA
+    const monthlyRekons = await this.prisma.qaReconciliation.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
+        },
+        status: { in: ['APPROVED', 'REJECTED'] }
+      },
+      select: {
+        qcName: true,
+        createdAt: true,
+        updatedAt: true,
       }
     });
 
@@ -103,6 +120,30 @@ export class QaProductivityService {
       const p2 = tappings.filter(t => t.peak === 2).length;
       const p3 = tappings.filter(t => t.peak === 3).length;
 
+      // Calculate avgTappingDuration
+      let totalTapSec = 0;
+      let validTaps = 0;
+      tappings.forEach(t => {
+        if (t.tappingDuration) {
+          totalTapSec += t.tappingDuration;
+          validTaps++;
+        }
+      });
+      const avgTappingDuration = validTaps > 0 ? Math.round(totalTapSec / validTaps) : 0;
+
+      // Calculate avgRekonSla (in hours or minutes)
+      const rekons = monthlyRekons.filter(r => r.qcName === tapper);
+      let totalRekonSec = 0;
+      let validRekons = 0;
+      rekons.forEach(r => {
+        if (r.createdAt && r.updatedAt) {
+          totalRekonSec += (r.updatedAt.getTime() - r.createdAt.getTime()) / 1000;
+          validRekons++;
+        }
+      });
+      // Return SLA in minutes
+      const avgRekonSla = validRekons > 0 ? Math.round((totalRekonSec / validRekons) / 60) : 0;
+
       qcProductivity.push({
         tapper,
         totalAgent: agents.length,
@@ -127,6 +168,9 @@ export class QaProductivityService {
         monthlyTarget: qcTarget.monthly,
         monthlyRealization: tappings.length,
         monthlyRemaining: qcTarget.monthly - tappings.length,
+        
+        avgTappingDuration,
+        avgRekonSla,
       });
     }
 

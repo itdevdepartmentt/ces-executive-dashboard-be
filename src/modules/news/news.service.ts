@@ -1,3 +1,5 @@
+
+
 import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -272,10 +274,8 @@ export class NewsService {
   async incrementView(id: string) {
     // Increment the view count atomically, ignore if article doesn't exist
     try {
-      await this.prisma.news.update({
-        where: { id },
-        data: { viewCount: { increment: 1 } },
-      });
+      // Menggunakan raw SQL agar field @updatedAt tidak otomatis terupdate oleh Prisma
+      await this.prisma.$executeRaw`UPDATE "News" SET "viewCount" = "viewCount" + 1 WHERE id = ${id}`;
       // Invalidasi cache detail agar viewCount terbaru tampil
       await this.cacheManager.del(this.detailCacheKey(id));
     } catch (e) {

@@ -19,7 +19,7 @@ import { NewsModule } from './modules/news/news.module';
 import { LookupManagementModule } from './modules/lookup-management/lookup-management.module';
 import { RawDownloadModule } from './modules/raw-download/raw-download.module';
 import { UsersModule } from './modules/users/users.module';
-import { SurveyModule } from './modules/survey/survey.module';
+
 import { QaModule } from './modules/qa/qa.module';
 
 import { CacheModule } from '@nestjs/cache-manager';
@@ -27,6 +27,7 @@ import Keyv from 'keyv';
 import { createKeyv } from '@keyv/redis';
 import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconciliation.module';
 import { QaProductivityModule } from './modules/qa-productivity/qa-productivity.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -96,10 +97,11 @@ import { QaProductivityModule } from './modules/qa-productivity/qa-productivity.
       },
     }),
     UsersModule,
-    SurveyModule,
+
     QaModule,
     QaReconciliationModule,
     QaProductivityModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

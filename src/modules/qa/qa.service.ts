@@ -696,13 +696,6 @@ export class QaService {
   async getQaScoreDashboard(year?: string, month?: string, agent?: string, peak?: string, user?: any, teamLeader?: string) {
     const whereClause: any = {};
 
-    // Role-based filtering
-    if (user?.role === 'USER') {
-      whereClause.agent = user.name;
-    } else if (user?.role === 'TL') {
-      whereClause.teamLeader = user.name;
-    }
-
     // Date filtering using createdAt
     if (year) {
       const y = parseInt(year);
@@ -901,11 +894,11 @@ export class QaService {
         dokumentasi: parseFloat(((data.dokumentasi / data.count / 15) * 100).toFixed(2)),
       }));
 
-    // Format Top 3 NC KIP Level 3
+    // Format Top 5 NC KIP Level 3
     const topKipNc = Array.from(kip3NcMap.entries())
       .map(([kip, count]) => ({ kip, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
+      .slice(0, 5);
 
     return {
       monthlyScores,
@@ -927,12 +920,6 @@ export class QaService {
     const skip = (page - 1) * limit;
     const whereClause: any = {};
     const andConditions: any[] = [];
-    // Role-based filtering: Agents can only see their own detail tapping, QC can only see theirs
-    if (user?.role === 'USER') {
-      whereClause.agent = user.name;
-    } else if (user?.role === 'QC') {
-      whereClause.tapper = user.name;
-    }
     if (year) {
       const y = parseInt(year);
       const startDate = new Date(y, month ? parseInt(month) - 1 : 0, 1);
@@ -942,7 +929,7 @@ export class QaService {
       whereClause.createdAt = { gte: startDate, lt: endDate };
     }
 
-    if (agent && user?.role !== 'USER') {
+    if (agent) {
       whereClause.agent = agent;
     }
 
@@ -1052,8 +1039,26 @@ export class QaService {
       ? parseFloat(((totalEksekutorTappings / allForStats.length) * 100).toFixed(2))
       : 0;
 
+    const censoredData = data.map((row: any) => {
+      const isAgent = user?.name === row.agent;
+      const isTl = user?.name === row.teamLeader;
+      const isPending = row.komitmenStatus === 'PENDING';
+      
+      let finalKomitmen = row.komitmen;
+      if (isPending && !isAgent && !isTl) {
+        finalKomitmen = '[Menunggu Approval TL]';
+      } else if (user?.role === 'USER' && !isAgent) {
+        finalKomitmen = row.komitmen ? '[Komitmen Disembunyikan]' : null;
+      }
+      
+      return {
+        ...row,
+        komitmen: finalKomitmen
+      };
+    });
+
     return {
-      data,
+      data: censoredData,
       meta: {
         total,
         page,
@@ -1077,16 +1082,6 @@ export class QaService {
 
   async getDetailTappingFilterOptions(user?: any) {
     const whereClause: any = {};
-
-    // Role-based filtering
-    if (user?.role === 'USER') {
-      whereClause.agent = user.name;
-    } else if (user?.role === 'TL') {
-      whereClause.teamLeader = user.name;
-    } else if (user?.role === 'QC') {
-      whereClause.tapper = user.name;
-    }
-
 
     const [agents, years, peaks, teamLeaders] = await Promise.all([
       this.prisma.qaFormTapping.findMany({

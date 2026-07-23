@@ -259,33 +259,34 @@ export class RawDownloadService {
     const result: Record<string, unknown> = {};
 
     if (type === 'call') {
-      const callColumnOrder = [
-        'kipId',
-        'appId',
-        'areaName',
-        'brand',
-        'employeeCode',
-        'employeeName',
-        'msisdn',
-        'notes',
-        'regName',
-        'service',
-        'topicReason1',
-        'topicReason2',
-        'topicResult',
-        'unitName',
-        'unitType',
-        'updateStamp',
-        'userId',
-        'isFcrRealisasi',
+      const callColumnMap: [string, string][] = [
+        ['kipId', 'ticketId'],
+        ['updateStamp', 'updateStamp'],
+        ['msisdn', 'msisdn'],
+        ['brand', 'brand'],
+        ['unitType', 'unitType'],
+        ['unitName', 'unitName'],
+        ['areaName', 'areaName'],
+        ['regName', 'regName'],
+        ['topicReason1', 'topicReason1'],
+        ['topicReason2', 'topicReason2'],
+        ['topicResult', 'topicResult'],
+        ['service', 'service'],
+        ['appId', 'appId'],
+        ['userId', 'userId'],
+        ['employeeCode', 'employeeCode'],
+        ['employeeName', 'employeeName'],
+        ['notes', 'notes'],
+        ['isFcrRealisasi', 'isFirstCallRealisasi'],
       ];
-      for (const col of callColumnOrder) {
-        if (col in row && !EXCLUDED_COLUMNS.has(col)) {
-          result[col] = this.normalizeCellValue(row[col]);
+      
+      for (const [dbKey, excelKey] of callColumnMap) {
+        if (dbKey in row && !EXCLUDED_COLUMNS.has(dbKey)) {
+          result[excelKey] = this.normalizeCellValue(row[dbKey]);
         }
       }
       for (const [key, value] of Object.entries(row)) {
-        if (!callColumnOrder.includes(key) && !EXCLUDED_COLUMNS.has(key)) {
+        if (!callColumnMap.some(([dbKey]) => dbKey === key) && !EXCLUDED_COLUMNS.has(key)) {
           result[key] = this.normalizeCellValue(value);
         }
       }

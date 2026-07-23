@@ -23,7 +23,7 @@ export class QaController {
   }
 
   @Get('tickets')
-  @Roles('ADMIN', 'QC', 'TL_QC')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
   getTickets(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -48,7 +48,7 @@ export class QaController {
   }
 
   @Get('tickets/export')
-  @Roles('ADMIN', 'QC', 'TL_QC')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
   exportTickets(
     @Query('search') search?: string,
     @Query('filters') filters?: string,
@@ -60,13 +60,13 @@ export class QaController {
   }
 
   @Get('tickets/options')
-  @Roles('ADMIN', 'QC', 'TL_QC')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
   getTicketFilterOptions(@Req() req: any) {
     return this.qaService.getTicketFilterOptions(req.user);
   }
 
   @Get('tickets/:id')
-  @Roles('ADMIN', 'QC', 'TL_QC')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
   getTicketById(@Param('id') id: string) {
     return this.qaService.getPendingTicketById(id);
   }
@@ -90,19 +90,7 @@ export class QaController {
     return this.qaService.deletePendingTicket(id);
   }
 
-  // --- History Tapping Bulk Import/Export ---
-  @Get('history/export-template')
-  @Roles('ADMIN', 'QC', 'TL_QC')
-  exportHistoryTappingTemplate() {
-    return this.qaService.exportHistoryTappingTemplate();
-  }
 
-  @Post('history/upload')
-  @Roles('ADMIN', 'QC', 'TL_QC')
-  @UseInterceptors(FileInterceptor('file'))
-  uploadHistoryTapping(@UploadedFile() file: Express.Multer.File) {
-    return this.qaService.uploadHistoryTapping(file);
-  }
 
 
   @Get()
@@ -137,9 +125,10 @@ export class QaController {
     @Query('month') month?: string,
     @Query('agent') agent?: string,
     @Query('peak') peak?: string,
+    @Query('teamLeader') teamLeader?: string,
     @Req() req?: any,
   ) {
-    return this.qaService.getQaScoreDashboard(year, month, agent, peak, req.user);
+    return this.qaService.getQaScoreDashboard(year, month, agent, peak, req.user, teamLeader);
   }
 
   @Get('detail-tapping')
@@ -151,6 +140,7 @@ export class QaController {
     @Query('month') month?: string,
     @Query('agent') agent?: string,
     @Query('peak') peak?: string,
+    @Query('teamLeader') teamLeader?: string,
     @Query('search') search?: string,
     @Query('filters') filters?: string,
     @Query('sortBy') sortBy?: string,
@@ -160,7 +150,7 @@ export class QaController {
     const parsedPage = page ? parseInt(page, 10) : 1;
     const parsedLimit = limit ? parseInt(limit, 10) : 100;
     return this.qaService.getDetailTapping(
-      parsedPage, parsedLimit, year, month, agent, peak, search, filters, sortBy, sortOrder, req.user,
+      parsedPage, parsedLimit, year, month, agent, peak, search, filters, sortBy, sortOrder, req.user, teamLeader
     );
   }
 
@@ -224,3 +214,4 @@ export class QaController {
     return this.qaService.deleteFormTapping(id);
   }
 }
+

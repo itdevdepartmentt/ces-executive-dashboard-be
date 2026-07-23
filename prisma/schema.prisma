@@ -602,6 +602,20 @@ model QaTargetSetting {
   @@map("qa_target_setting")
 }
 
+model AppNotification {
+  id          String   @id @default(uuid())
+  recipientId String   @map("recipient_id")
+  type        String
+  title       String
+  message     String
+  link        String?
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([recipientId, isRead])
+  @@map("app_notification")
+}
+
 enum UserRole {
   USER
   ADMIN
