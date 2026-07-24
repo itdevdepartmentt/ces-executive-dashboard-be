@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateQaReconciliationDto } from './dto/create-qa-reconciliation.dto';
 import { UpdateQaReconciliationDto } from './dto/update-qa-reconciliation.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class QaReconciliationService {
@@ -114,6 +115,22 @@ export class QaReconciliationService {
     }
 
     return resolved;
+  }
+
+  async exportData(user: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', search?: string, status?: string) {
+    const data = await this.findAll(user, sortBy, sortOrder, search, status);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Reconciliation');
+
+    if (data.length > 0) {
+      worksheet.columns = Object.keys(data[0]).map(key => ({ header: key, key: key }));
+      data.forEach(item => worksheet.addRow(item));
+    } else {
+      worksheet.columns = [{ header: 'No Data', key: 'no_data' }];
+    }
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async findOne(id: string) {

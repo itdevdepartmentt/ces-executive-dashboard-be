@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Req, Query, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, Req, Query, Delete, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { QaReconciliationService } from './qa-reconciliation.service';
 import { CreateQaReconciliationDto } from './dto/create-qa-reconciliation.dto';
 import { UpdateQaReconciliationDto } from './dto/update-qa-reconciliation.dto';
@@ -15,6 +16,22 @@ export class QaReconciliationController {
   @Roles('TL')
   create(@Body() createDto: CreateQaReconciliationDto, @Req() req: any) {
     return this.qaReconciliationService.create(createDto, req.user);
+  }
+
+  @Get('export')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
+  async exportData(
+    @Res() res: Response,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Req() req?: any
+  ) {
+    const buffer = await this.qaReconciliationService.exportData(req.user, sortBy, sortOrder, search, status);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="reconciliation-${new Date().getTime()}.xlsx"`);
+    return res.send(buffer);
   }
 
   @Get()

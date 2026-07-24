@@ -379,10 +379,25 @@ export class QaService {
 
     const whereClause = andConditions.length > 0 ? { AND: andConditions } : {};
 
-    return this.prisma.qaFormTapping.findMany({
+    const data = await this.prisma.qaFormTapping.findMany({
       where: whereClause,
       orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
+    return this.createExcelBuffer(data, 'History');
+  }
+
+  private async createExcelBuffer(data: any[], sheetName: string): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(sheetName);
+
+    if (data.length > 0) {
+      worksheet.columns = Object.keys(data[0]).map(key => ({ header: key, key: key }));
+      data.forEach(item => worksheet.addRow(item));
+    } else {
+      worksheet.columns = [{ header: 'No Data', key: 'no_data' }];
+    }
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async getFormTappingById(id: string) {
@@ -488,10 +503,11 @@ export class QaService {
 
     const whereClause = andConditions.length > 0 ? { AND: andConditions } : {};
 
-    return this.prisma.qaTicket.findMany({
+    const data = await this.prisma.qaTicket.findMany({
       where: whereClause,
       orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
+    return this.createExcelBuffer(data, 'Tickets');
   }
 
   async getPendingTicketById(id: string) {

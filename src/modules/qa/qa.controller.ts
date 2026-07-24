@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, UseInterceptors, UploadedFile, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, UseInterceptors, UploadedFile, Query, Req, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { QaService } from './qa.service';
 import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
 import { RolesGuard } from '../../common/guard/roles.guard';
@@ -49,14 +50,18 @@ export class QaController {
 
   @Get('tickets/export')
   @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
-  exportTickets(
+  async exportTickets(
+    @Res() res: Response,
     @Query('search') search?: string,
     @Query('filters') filters?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Req() req?: any,
   ) {
-    return this.qaService.exportPendingTickets(search, filters, req.user, sortBy, sortOrder);
+    const buffer = await this.qaService.exportPendingTickets(search, filters, req.user, sortBy, sortOrder);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="pending-tickets-${new Date().getTime()}.xlsx"`);
+    return res.send(buffer);
   }
 
   @Get('tickets/options')
@@ -168,14 +173,18 @@ export class QaController {
 
   @Get('export')
   @Roles('ADMIN', 'QC', 'TL', 'TL_QC')
-  exportAllFormTapping(
+  async exportAllFormTapping(
+    @Res() res: Response,
     @Query('search') search?: string,
     @Query('filters') filters?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Req() req?: any,
   ) {
-    return this.qaService.exportAllFormTapping(search, filters, req?.user, sortBy, sortOrder);
+    const buffer = await this.qaService.exportAllFormTapping(search, filters, req?.user, sortBy, sortOrder);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="form-tapping-${new Date().getTime()}.xlsx"`);
+    return res.send(buffer);
   }
 
   @Get(':id')
