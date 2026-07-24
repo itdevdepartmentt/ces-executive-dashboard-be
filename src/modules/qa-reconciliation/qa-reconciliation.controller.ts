@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, UseGuards, Req, Query, Delete, Res } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { QaReconciliationService } from './qa-reconciliation.service';
 import { CreateQaReconciliationDto } from './dto/create-qa-reconciliation.dto';
 import { UpdateQaReconciliationDto } from './dto/update-qa-reconciliation.dto';
