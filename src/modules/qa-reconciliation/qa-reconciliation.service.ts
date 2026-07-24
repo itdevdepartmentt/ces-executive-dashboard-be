@@ -82,12 +82,13 @@ export class QaReconciliationService {
     let resolved = await Promise.all(rekons.map(async (rekon) => {
       const tapping = await this.prisma.qaFormTapping.findUnique({
         where: { id: rekon.qaFormTappingId },
-        select: { agent: true, idTiket: true },
+        select: { agent: true, idTiket: true, peak: true },
       });
       return {
         ...rekon,
         agentName: tapping?.agent || '-',
         idTiket: tapping?.idTiket || '-',
+        peak: tapping?.peak || null,
       };
     }));
 
