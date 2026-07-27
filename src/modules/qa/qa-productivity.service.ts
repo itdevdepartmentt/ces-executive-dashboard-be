@@ -25,7 +25,7 @@ export class QaProductivityService {
     const settings = await this.prisma.qaTargetSetting.findMany();
     // Map of QC targets
     const qcTargets = new Map<string, any>();
-    settings.filter(s => s.type === 'QC').forEach(s => qcTargets.set(s.name, s));
+    settings.filter(s => s.type === 'QC').forEach(s => qcTargets.set(s.name.toUpperCase().trim(), s));
     
     // Map of Agent targets — aggregate (sum) peaks across all rows for same agent (multi-tapper)
     const agentTargets = new Map<string, { peak1: number; peak2: number; peak3: number; monthly: number }>();
@@ -60,6 +60,11 @@ export class QaProductivityService {
       }
     });
 
+    // Normalize tappings tapper names to uppercase immediately to avoid mismatch later
+    monthlyTappings.forEach(t => {
+      if (t.tapper) t.tapper = t.tapper.toUpperCase().trim();
+    });
+
     // Get Reconciliations for the month to calculate SLA
     const monthlyRekons = await this.prisma.qaReconciliation.findMany({
       where: {
@@ -76,6 +81,11 @@ export class QaProductivityService {
       }
     });
 
+    // Normalize rekons qcName to uppercase
+    monthlyRekons.forEach(r => {
+      if (r.qcName) r.qcName = r.qcName.toUpperCase().trim();
+    });
+
     // Get agent mapping (to group by Tapper)
     // First, try from LookupAgent
     const lookupAgents = await this.prisma.lookupAgent.findMany({
@@ -87,20 +97,22 @@ export class QaProductivityService {
     // Add from LookupAgent
     for (const agent of lookupAgents) {
       if (agent.tapper && agent.tapper.trim() !== '' && agent.namaAgent) {
-        if (!qcAgentMap.has(agent.tapper)) {
-          qcAgentMap.set(agent.tapper, new Set());
+        const tapperKey = agent.tapper.toUpperCase().trim();
+        if (!qcAgentMap.has(tapperKey)) {
+          qcAgentMap.set(tapperKey, new Set());
         }
-        qcAgentMap.get(agent.tapper)!.add(agent.namaAgent);
+        qcAgentMap.get(tapperKey)!.add(agent.namaAgent);
       }
     }
 
     // Add from actual Tapping data (in case LookupAgent is incomplete)
     for (const tapping of monthlyTappings) {
       if (tapping.tapper && tapping.tapper.trim() !== '' && tapping.agent) {
-        if (!qcAgentMap.has(tapping.tapper)) {
-          qcAgentMap.set(tapping.tapper, new Set());
+        const tapperKey = tapping.tapper.toUpperCase().trim();
+        if (!qcAgentMap.has(tapperKey)) {
+          qcAgentMap.set(tapperKey, new Set());
         }
-        qcAgentMap.get(tapping.tapper)!.add(tapping.agent);
+        qcAgentMap.get(tapperKey)!.add(tapping.agent);
       }
     }
 
@@ -112,8 +124,9 @@ export class QaProductivityService {
     });
 
     for (const user of qcUsers) {
-      if (!qcAgentMap.has(user.name)) {
-        qcAgentMap.set(user.name, new Set());
+      const userTapperKey = user.name.toUpperCase().trim();
+      if (!qcAgentMap.has(userTapperKey)) {
+        qcAgentMap.set(userTapperKey, new Set());
       }
     }
 
@@ -176,9 +189,9 @@ export class QaProductivityService {
         peak3Realization: p3,
         peak3Remaining: (qcTarget.peak3 || 0) - p3,
 
-        monthlyTarget: qcTarget.monthly,
+        monthlyTarget: (qcTarget.peak1 || 0) + (qcTarget.peak2 || 0) + (qcTarget.peak3 || 0),
         monthlyRealization: tappings.length,
-        monthlyRemaining: qcTarget.monthly - tappings.length,
+        monthlyRemaining: ((qcTarget.peak1 || 0) + (qcTarget.peak2 || 0) + (qcTarget.peak3 || 0)) - tappings.length,
         
         avgTappingDuration,
         avgRekonSla,
@@ -247,11 +260,11 @@ export class QaProductivityService {
         tapperPeaks.forEach((peaks, tapperName) => {
           const sortedPeaks = Array.from(peaks).sort();
           const peakStr = sortedPeaks.map(p => `P${p}`).join(', ');
-          labels.push(`${tapperName} (${peakStr})`);
+          labels.push(`${tapperName.toUpperCase()} (${peakStr})`);
         });
         tapperForAgent = labels.join(' | ');
       } else {
-        tapperForAgent = lookupAgentInfo?.tapper || 'Unknown Tapper';
+        tapperForAgent = lookupAgentInfo?.tapper?.toUpperCase() || 'Unknown Tapper';
       }
 
       const groupForAgent = lookupAgentInfo?.group || '';
@@ -272,9 +285,9 @@ export class QaProductivityService {
         peak3Realization: p3,
         peak3Remaining: (aTarget.peak3 || 0) - p3,
 
-        monthlyTarget: aTarget.monthly,
+        monthlyTarget: (aTarget.peak1 || 0) + (aTarget.peak2 || 0) + (aTarget.peak3 || 0),
         monthlyRealization: tappings.length,
-        monthlyRemaining: aTarget.monthly - tappings.length,
+        monthlyRemaining: ((aTarget.peak1 || 0) + (aTarget.peak2 || 0) + (aTarget.peak3 || 0)) - tappings.length,
       });
     }
 
@@ -301,7 +314,7 @@ export class QaProductivityService {
 
     // Filter dailyTappings for QC
     const filteredDailyTappings = (user && user.role === 'QC')
-      ? dailyTappings.filter(t => t.tapper === user.name)
+      ? dailyTappings.filter(t => t.tapper === user.name.toUpperCase().trim())
       : dailyTappings;
 
     for (const t of filteredDailyTappings) {
@@ -326,7 +339,7 @@ export class QaProductivityService {
 
     let totalQcDailyTarget = 0;
     if (user && user.role === 'QC') {
-      const qcT = qcTargets.get(user.name);
+      const qcT = qcTargets.get(user.name.toUpperCase().trim());
       totalQcDailyTarget = qcT ? qcT.daily : 0;
     } else {
       qcTargets.forEach(t => { totalQcDailyTarget += t.daily; });
