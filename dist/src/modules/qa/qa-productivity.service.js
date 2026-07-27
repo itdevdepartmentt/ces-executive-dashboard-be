@@ -63,7 +63,7 @@ let QaProductivityService = class QaProductivityService {
         targetDateEnd.setHours(23, 59, 59, 999);
         const settings = await this.prisma.qaTargetSetting.findMany();
         const qcTargets = new Map();
-        settings.filter(s => s.type === 'QC').forEach(s => qcTargets.set(s.name, s));
+        settings.filter(s => s.type === 'QC').forEach(s => qcTargets.set(s.name.toUpperCase().trim(), s));
         const agentTargets = new Map();
         settings.filter(s => s.type === 'AGENT').forEach(s => {
             const existing = agentTargets.get(s.name);
@@ -93,6 +93,10 @@ let QaProductivityService = class QaProductivityService {
                 tappingDuration: true,
             }
         });
+        monthlyTappings.forEach(t => {
+            if (t.tapper)
+                t.tapper = t.tapper.toUpperCase().trim();
+        });
         const monthlyRekons = await this.prisma.qaReconciliation.findMany({
             where: {
                 createdAt: {
@@ -107,24 +111,30 @@ let QaProductivityService = class QaProductivityService {
                 updatedAt: true,
             }
         });
+        monthlyRekons.forEach(r => {
+            if (r.qcName)
+                r.qcName = r.qcName.toUpperCase().trim();
+        });
         const lookupAgents = await this.prisma.lookupAgent.findMany({
             where: { tapper: { not: null } }
         });
         const qcAgentMap = new Map();
         for (const agent of lookupAgents) {
             if (agent.tapper && agent.tapper.trim() !== '' && agent.namaAgent) {
-                if (!qcAgentMap.has(agent.tapper)) {
-                    qcAgentMap.set(agent.tapper, new Set());
+                const tapperKey = agent.tapper.toUpperCase().trim();
+                if (!qcAgentMap.has(tapperKey)) {
+                    qcAgentMap.set(tapperKey, new Set());
                 }
-                qcAgentMap.get(agent.tapper).add(agent.namaAgent);
+                qcAgentMap.get(tapperKey).add(agent.namaAgent);
             }
         }
         for (const tapping of monthlyTappings) {
             if (tapping.tapper && tapping.tapper.trim() !== '' && tapping.agent) {
-                if (!qcAgentMap.has(tapping.tapper)) {
-                    qcAgentMap.set(tapping.tapper, new Set());
+                const tapperKey = tapping.tapper.toUpperCase().trim();
+                if (!qcAgentMap.has(tapperKey)) {
+                    qcAgentMap.set(tapperKey, new Set());
                 }
-                qcAgentMap.get(tapping.tapper).add(tapping.agent);
+                qcAgentMap.get(tapperKey).add(tapping.agent);
             }
         }
         const qcUsers = await this.prisma.user.findMany({
@@ -133,8 +143,9 @@ let QaProductivityService = class QaProductivityService {
             }
         });
         for (const user of qcUsers) {
-            if (!qcAgentMap.has(user.name)) {
-                qcAgentMap.set(user.name, new Set());
+            const userTapperKey = user.name.toUpperCase().trim();
+            if (!qcAgentMap.has(userTapperKey)) {
+                qcAgentMap.set(userTapperKey, new Set());
             }
         }
         const qcProductivity = [];
@@ -183,9 +194,9 @@ let QaProductivityService = class QaProductivityService {
                 peak3Target: qcTarget.peak3 || 0,
                 peak3Realization: p3,
                 peak3Remaining: (qcTarget.peak3 || 0) - p3,
-                monthlyTarget: qcTarget.monthly,
+                monthlyTarget: (qcTarget.peak1 || 0) + (qcTarget.peak2 || 0) + (qcTarget.peak3 || 0),
                 monthlyRealization: tappings.length,
-                monthlyRemaining: qcTarget.monthly - tappings.length,
+                monthlyRemaining: ((qcTarget.peak1 || 0) + (qcTarget.peak2 || 0) + (qcTarget.peak3 || 0)) - tappings.length,
                 avgTappingDuration,
                 avgRekonSla,
             });
@@ -235,12 +246,12 @@ let QaProductivityService = class QaProductivityService {
                 tapperPeaks.forEach((peaks, tapperName) => {
                     const sortedPeaks = Array.from(peaks).sort();
                     const peakStr = sortedPeaks.map(p => `P${p}`).join(', ');
-                    labels.push(`${tapperName} (${peakStr})`);
+                    labels.push(`${tapperName.toUpperCase()} (${peakStr})`);
                 });
                 tapperForAgent = labels.join(' | ');
             }
             else {
-                tapperForAgent = lookupAgentInfo?.tapper || 'Unknown Tapper';
+                tapperForAgent = lookupAgentInfo?.tapper?.toUpperCase() || 'Unknown Tapper';
             }
             const groupForAgent = lookupAgentInfo?.group || '';
             agentPerformance.push({
@@ -256,9 +267,9 @@ let QaProductivityService = class QaProductivityService {
                 peak3Target: aTarget.peak3 || 0,
                 peak3Realization: p3,
                 peak3Remaining: (aTarget.peak3 || 0) - p3,
-                monthlyTarget: aTarget.monthly,
+                monthlyTarget: (aTarget.peak1 || 0) + (aTarget.peak2 || 0) + (aTarget.peak3 || 0),
                 monthlyRealization: tappings.length,
-                monthlyRemaining: aTarget.monthly - tappings.length,
+                monthlyRemaining: ((aTarget.peak1 || 0) + (aTarget.peak2 || 0) + (aTarget.peak3 || 0)) - tappings.length,
             });
         }
         qcProductivity.sort((a, b) => a.tapper.localeCompare(b.tapper));
@@ -276,7 +287,7 @@ let QaProductivityService = class QaProductivityService {
         allLookupAgents.forEach(a => { if (a.namaAgent)
             agentGroupMap.set(a.namaAgent.toLowerCase().trim(), a); });
         const filteredDailyTappings = (user && user.role === 'QC')
-            ? dailyTappings.filter(t => t.tapper === user.name)
+            ? dailyTappings.filter(t => t.tapper === user.name.toUpperCase().trim())
             : dailyTappings;
         for (const t of filteredDailyTappings) {
             if (!t.agent)
@@ -304,7 +315,7 @@ let QaProductivityService = class QaProductivityService {
         }
         let totalQcDailyTarget = 0;
         if (user && user.role === 'QC') {
-            const qcT = qcTargets.get(user.name);
+            const qcT = qcTargets.get(user.name.toUpperCase().trim());
             totalQcDailyTarget = qcT ? qcT.daily : 0;
         }
         else {
