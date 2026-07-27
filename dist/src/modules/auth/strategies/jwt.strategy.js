@@ -27,8 +27,12 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         this.prisma = prisma;
     }
     async validate(payload) {
+        const userId = payload.sub || payload.id;
+        if (!userId) {
+            throw new common_1.UnauthorizedException('Invalid token format: missing user ID');
+        }
         const user = await this.prisma.user.findUnique({
-            where: { id: payload.sub },
+            where: { id: userId },
             select: { id: true, name: true, email: true, role: true, createdAt: true },
         });
         if (!user)
