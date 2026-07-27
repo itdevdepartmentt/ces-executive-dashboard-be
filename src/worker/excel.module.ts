@@ -16,11 +16,12 @@ import { CsatReportSchedulerService } from './scheduler/csat-report-scheduler.se
 @Module({
   imports: [
     // Register the specific queue we used in the Controller
-    BullModule.registerQueue({
-      name: 'excel-queue', 
-    }),
+    // BullModule.registerQueue({
+    //   name: 'excel-queue', 
+    // }),
   ],
-  controllers: [UploadController],
+  // controllers: [UploadController],
+  controllers: [],
   providers: [
     ExcelProcessor, 
     CallUploadService,
@@ -33,6 +34,6 @@ import { CsatReportSchedulerService } from './scheduler/csat-report-scheduler.se
     OcaReportSchedulerService,
     CsatReportSchedulerService,
   ],
-  exports: [BullModule], 
+  // exports: [BullModule], 
 })
 export class ExcelModule {}

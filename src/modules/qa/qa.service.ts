@@ -47,7 +47,7 @@ export class QaService {
         type: 'QA_TAPPING_AGENT',
         title: 'Tapping NC Baru',
         message: `Tapping NC baru masuk untuk tiket ${formTapping.idTiket}. Silakan isi komitmen.`,
-        link: `/quality-assurance/detail-tapping/${formTapping.id}`,
+        link: `/quality-assurance/detail-tapping?id=${formTapping.id}`,
       });
     }
 
@@ -57,7 +57,7 @@ export class QaService {
         type: 'QA_TAPPING_TL',
         title: 'Tapping NC Agent Baru',
         message: `Agent ${formTapping.agent} mendapat tapping NC dari ${formTapping.tapper}. Pantau pengisian komitmennya.`,
-        link: `/quality-assurance/detail-tapping/${formTapping.id}`,
+        link: `/quality-assurance/detail-tapping?id=${formTapping.id}`,
       });
     }
 
@@ -383,7 +383,7 @@ export class QaService {
       where: whereClause,
       orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
-    return this.createExcelBuffer(data, 'History');
+    return this.createExcelBuffer(data, 'Riwayat');
   }
 
   private async createExcelBuffer(data: any[], sheetName: string): Promise<Buffer> {
@@ -392,7 +392,24 @@ export class QaService {
 
     if (data.length > 0) {
       worksheet.columns = Object.keys(data[0]).map(key => ({ header: key, key: key }));
-      data.forEach(item => worksheet.addRow(item));
+      
+      data.forEach(item => {
+        const normalizedItem: any = {};
+        for (const [key, value] of Object.entries(item)) {
+          if (value === null || value === undefined) {
+            normalizedItem[key] = null;
+          } else if (value instanceof Date) {
+            // Convert to a readable string or let ExcelJS handle it if preferred. 
+            // We'll let ExcelJS handle Date objects, it usually does fine.
+            normalizedItem[key] = value;
+          } else if (typeof value === 'object' || Array.isArray(value)) {
+            normalizedItem[key] = JSON.stringify(value);
+          } else {
+            normalizedItem[key] = value;
+          }
+        }
+        worksheet.addRow(normalizedItem);
+      });
     } else {
       worksheet.columns = [{ header: 'No Data', key: 'no_data' }];
     }

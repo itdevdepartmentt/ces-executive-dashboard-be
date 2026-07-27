@@ -26,9 +26,10 @@ export class QaReconciliationController {
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('filters') filters?: string,
     @Req() req?: any
   ) {
-    const buffer = await this.qaReconciliationService.exportData(req.user, sortBy, sortOrder, search, status);
+    const buffer = await this.qaReconciliationService.exportData(req.user, sortBy, sortOrder, search, status, filters);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="reconciliation-${new Date().getTime()}.xlsx"`);
     return res.send(buffer);
@@ -41,9 +42,10 @@ export class QaReconciliationController {
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('filters') filters?: string,
     @Req() req?: any
   ) {
-    return this.qaReconciliationService.findAll(req.user, sortBy, sortOrder, search, status);
+    return this.qaReconciliationService.findAll(req.user, sortBy, sortOrder, search, status, filters);
   }
 
   @Delete(':id')

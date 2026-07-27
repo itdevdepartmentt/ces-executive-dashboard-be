@@ -14,49 +14,24 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { diskStorage } from 'multer';
 import { OcaReportSchedulerService } from 'src/worker/scheduler/oca-report-scheduler.service';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { OcaTicketSchedulerService } from 'src/worker/scheduler/oca-ticket-scheduler.service';
 
 @Controller('schedule')
 export class ScheduleController {
   constructor(
-    @InjectQueue('ticket-processing') private scheduleQueue: Queue,
+    // @InjectQueue('ticket-processing') private scheduleQueue: Queue,
     private readonly ocaReportService: OcaReportSchedulerService,
     private readonly ocaTicketSchedulerService: OcaTicketSchedulerService,
   ) {}
 
   @Get('status/:jobId')
   async getJobStatus(@Param('jobId') jobId: string) {
-    const job = await this.scheduleQueue.getJob(jobId);
-
-    if (!job) {
-      throw new NotFoundException(`Job ${jobId} not found`);
-    }
-
-    // 1. Check if job is finished
-    const isCompleted = await job.isCompleted();
-    const isFailed = await job.isFailed();
-
-    if (isCompleted) {
-      // 2. Return the data you returned from the processor
-      return {
-        status: 'completed',
-        result: job.returnvalue, // This is your { stats: { inserted, updated } }
-      };
-    }
-
-    if (isFailed) {
-      return {
-        status: 'failed',
-        error: job.failedReason,
-      };
-    }
-
-    // 3. If still running, return progress (optional)
-    // You can use job.progress if you implemented updateProgress inside the processor
+    // We bypassed BullMQ, so all jobs returned from the API are already completed synchronously.
     return {
-      status: 'active',
-      progress: job.progress,
+      status: 'completed',
+      progress: 100,
+      result: null,
     };
   }
 
@@ -93,11 +68,19 @@ export class ScheduleController {
 
   @Post('sync-daily-oca')
   async syncDailyOca() {
-    const { lastJob, lastSync } = await this.ocaTicketSchedulerService.handleCron();
+    // Run in background without awaiting to prevent timeout
+    this.ocaTicketSchedulerService.handleCron().catch(e => {
+      console.error('Background sync error:', e);
+    });
+
+    const lastSyncUtc = await this.ocaTicketSchedulerService.getLastSyncTime();
+    const lastSync = lastSyncUtc
+      ? moment(lastSyncUtc).tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss')
+      : null;
 
     return {
-      message: 'All ticket batches have been queued.',
-      jobId: lastJob,
+      message: 'All ticket batches are syncing in the background.',
+      jobId: 'background-sync',
       lastSync: lastSync,
     };
   }

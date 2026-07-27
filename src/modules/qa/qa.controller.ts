@@ -77,7 +77,7 @@ export class QaController {
   }
 
   @Post('tickets/upload')
-  @Roles('ADMIN', 'QC', 'TL_QC')
+  @Roles('ADMIN', 'QC', 'TL_QC', 'TL')
   @UseInterceptors(FileInterceptor('file'))
   uploadTickets(@UploadedFile() file: Express.Multer.File) {
     return this.qaService.uploadTickets(file);

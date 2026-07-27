@@ -61,10 +61,11 @@ export class QaProductivityService {
       
       for (const item of allData) {
         if (!item.name) continue;
+        const tapper = item.tapper || '';
         await prisma.qaTargetSetting.upsert({
-          where: { name_type: { name: item.name, type: item.type } },
+          where: { name_type_tapper: { name: item.name, type: item.type, tapper } },
           update: { daily: Number(item.daily) || 0, peak1: Number(item.peak1) || 0, peak2: Number(item.peak2) || 0, peak3: Number(item.peak3) || 0, monthly: Number(item.monthly) || 0 },
-          create: { name: item.name, type: item.type, daily: Number(item.daily) || 0, peak1: Number(item.peak1) || 0, peak2: Number(item.peak2) || 0, peak3: Number(item.peak3) || 0, monthly: Number(item.monthly) || 0 }
+          create: { name: item.name, type: item.type, tapper, daily: Number(item.daily) || 0, peak1: Number(item.peak1) || 0, peak2: Number(item.peak2) || 0, peak3: Number(item.peak3) || 0, monthly: Number(item.monthly) || 0 }
         });
       }
       return { success: true };

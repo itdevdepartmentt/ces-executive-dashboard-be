@@ -259,37 +259,34 @@ export class RawDownloadService {
     const result: Record<string, unknown> = {};
 
     if (type === 'call') {
+      // STRICT column mapping for raw-call export.
+      // Order is fixed — do NOT add extra columns here to preserve the Excel format.
       const callColumnMap: [string, string][] = [
-        ['kipId', 'ticketId'],
-        ['updateStamp', 'updateStamp'],
-        ['msisdn', 'msisdn'],
-        ['brand', 'brand'],
-        ['unitType', 'unitType'],
-        ['unitName', 'unitName'],
-        ['areaName', 'areaName'],
-        ['regName', 'regName'],
-        ['topicReason1', 'topicReason1'],
-        ['topicReason2', 'topicReason2'],
-        ['topicResult', 'topicResult'],
-        ['service', 'service'],
-        ['appId', 'appId'],
-        ['userId', 'userId'],
-        ['employeeCode', 'employeeCode'],
-        ['employeeName', 'employeeName'],
-        ['notes', 'notes'],
+        ['kipId',          'kipId'],
+        ['updateStamp',    'updateStamp'],
+        ['msisdn',         'msisdn'],
+        ['brand',          'brand'],
+        ['unitType',       'unitType'],
+        ['unitName',       'unitName'],
+        ['areaName',       'areaName'],
+        ['regName',        'regName'],
+        ['topicReason1',   'topicReason1'],
+        ['topicReason2',   'topicReason2'],
+        ['topicResult',    'topicResult'],
+        ['service',        'service'],
+        ['appId',          'appId'],
+        ['userId',         'userId'],
+        ['employeeCode',   'employeeCode'],
+        ['employeeName',   'employeeName'],
+        ['notes',          'notes'],
         ['isFcrRealisasi', 'isFirstCallRealisasi'],
       ];
-      
+
       for (const [dbKey, excelKey] of callColumnMap) {
-        if (dbKey in row && !EXCLUDED_COLUMNS.has(dbKey)) {
-          result[excelKey] = this.normalizeCellValue(row[dbKey]);
-        }
+        result[excelKey] = dbKey in row ? this.normalizeCellValue(row[dbKey]) : null;
       }
-      for (const [key, value] of Object.entries(row)) {
-        if (!callColumnMap.some(([dbKey]) => dbKey === key) && !EXCLUDED_COLUMNS.has(key)) {
-          result[key] = this.normalizeCellValue(value);
-        }
-      }
+      // NOTE: No catch-all loop — only the columns above will appear in the Excel file.
+      // This ensures the format stays consistent regardless of DB schema changes.
     } else {
       for (const [key, value] of Object.entries(row)) {
         if (!EXCLUDED_COLUMNS.has(key)) {

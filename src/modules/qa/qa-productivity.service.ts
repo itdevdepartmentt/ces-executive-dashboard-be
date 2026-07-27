@@ -27,9 +27,20 @@ export class QaProductivityService {
     const qcTargets = new Map<string, any>();
     settings.filter(s => s.type === 'QC').forEach(s => qcTargets.set(s.name, s));
     
-    // Map of Agent targets
-    const agentTargets = new Map<string, any>();
-    settings.filter(s => s.type === 'AGENT').forEach(s => agentTargets.set(s.name, s));
+    // Map of Agent targets — aggregate (sum) peaks across all rows for same agent (multi-tapper)
+    const agentTargets = new Map<string, { peak1: number; peak2: number; peak3: number; monthly: number }>();
+    settings.filter(s => s.type === 'AGENT').forEach(s => {
+      const existing = agentTargets.get(s.name);
+      if (existing) {
+        // Merge: sum peaks so multi-tapper targets are combined
+        existing.peak1 += s.peak1 || 0;
+        existing.peak2 += s.peak2 || 0;
+        existing.peak3 += s.peak3 || 0;
+        existing.monthly = Math.max(existing.monthly, s.monthly || 0);
+      } else {
+        agentTargets.set(s.name, { peak1: s.peak1 || 0, peak2: s.peak2 || 0, peak3: s.peak3 || 0, monthly: s.monthly || 0 });
+      }
+    });
 
     // Get Form Tappings for the month
     const monthlyTappings = await this.prisma.qaFormTapping.findMany({
@@ -360,7 +371,6 @@ export class QaProductivityService {
     
     tappings.forEach(t => {
       if (t.tapper && t.tapper.trim() !== '') allQcs.add(t.tapper);
-      // Removed: pulling agents from tappings so old agents disappear if not in lookupAgent
     });
     
     const qcUsers = await this.prisma.user.findMany({
@@ -369,13 +379,17 @@ export class QaProductivityService {
     qcUsers.forEach(u => allQcs.add(u.name));
     
     const uniqueQcs = Array.from(allQcs).sort();
-    const uniqueAgents = Array.from(allAgents).sort();
 
     const qcSettingsMap = new Map<string, any>(settings.filter(s => s.type === 'QC').map(s => [s.name, s]));
-    const agentSettingsMap = new Map<string, any>(settings.filter(s => s.type === 'AGENT').map(s => [s.name, s]));
     
-    // Build lookup map for agent metadata (group, tapper, teamLeader)
-    const agentLookupMap = new Map<string, any>(lookupAgentsAll.filter(a => a.namaAgent).map(a => [a.namaAgent!, a]));
+    // Build lookup map for agent metadata — keyed by namaAgent|tapper for multi-tapper support
+    const agentLookupList = lookupAgentsAll.filter(a => a.namaAgent);
+    const agentLookupByName = new Map<string, any[]>();
+    agentLookupList.forEach(a => {
+      const key = a.namaAgent!;
+      if (!agentLookupByName.has(key)) agentLookupByName.set(key, []);
+      agentLookupByName.get(key)!.push(a);
+    });
 
     const qcs = uniqueQcs.map(qc => {
       const s = qcSettingsMap.get(qc);
@@ -389,20 +403,49 @@ export class QaProductivityService {
       };
     });
 
-    const agents = uniqueAgents.map(ag => {
-      const s = agentSettingsMap.get(ag) as any;
-      const lookup = findAgentMatch(ag, agentLookupMap);
-      return {
-        name: ag,
-        peak1: s?.peak1 || 0,
-        peak2: s?.peak2 || 0,
-        peak3: s?.peak3 || 0,
-        monthly: s?.monthly || 0,
-        tapper: lookup?.tapper || '',
-        teamLeader: lookup?.teamLeader || '',
-        group: lookup?.group || ''
-      };
-    });
+    // Build agent rows — one row per QaTargetSetting AGENT row (supports multi-tapper)
+    const agentSettingRows = settings.filter(s => s.type === 'AGENT');
+    
+    // Also include agents in lookupAgents that may not have a setting yet
+    const agentsWithSettings = new Set(agentSettingRows.map(s => s.name));
+    const agentsOnlyInLookup = Array.from(allAgents).filter(a => !agentsWithSettings.has(a));
+
+    const agents: any[] = [];
+
+    for (const s of agentSettingRows) {
+      const lookupRows = agentLookupByName.get(s.name) || [];
+      // Find lookup row matching this tapper (if any)
+      const matchingLookup = lookupRows.find(l => l.tapper?.trim() === s.tapper?.trim()) || lookupRows[0];
+      agents.push({
+        name: s.name,
+        peak1: s.peak1 || 0,
+        peak2: s.peak2 || 0,
+        peak3: s.peak3 || 0,
+        monthly: s.monthly || 0,
+        tapper: s.tapper || matchingLookup?.tapper || '',
+        teamLeader: matchingLookup?.teamLeader || '',
+        group: matchingLookup?.group || '',
+      });
+    }
+
+    // Add agents that exist in lookup but have no setting row (so they appear in the UI)
+    for (const agName of agentsOnlyInLookup) {
+      const lookupRows = agentLookupByName.get(agName) || [];
+      for (const l of lookupRows) {
+        agents.push({
+          name: agName,
+          peak1: l.peak1 || 0,
+          peak2: l.peak2 || 0,
+          peak3: l.peak3 || 0,
+          monthly: 0,
+          tapper: l.tapper || '',
+          teamLeader: l.teamLeader || '',
+          group: l.group || '',
+        });
+      }
+    }
+
+    agents.sort((a, b) => a.name.localeCompare(b.name));
 
     return { qcs, agents };
   }
@@ -420,40 +463,102 @@ export class QaProductivityService {
     for (const qc of qcs) {
       if (processedQcs.has(qc.name)) continue;
       processedQcs.add(qc.name);
-      newTargetSettings.push({ name: qc.name, type: 'QC', daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) });
+      newTargetSettings.push({ name: qc.name, type: 'QC', tapper: '', daily: Number(qc.daily), peak1: Number(qc.peak1), peak2: Number(qc.peak2), peak3: Number(qc.peak3), monthly: Number(qc.monthly) });
     }
 
-    const processedAgents = new Set<string>();
+    // For AGENT type — use composite key (name + tapper) to allow multi-tapper
+    // Track by "agentName|tapperName" to avoid true duplicates
+    const processedAgentTappers = new Set<string>();
     const lookupUpdates: any[] = [];
     const lookupCreates: any[] = [];
+    const processedLookupAgentNames = new Set<string>();
     
     for (const ag of agents) {
       const existingLookup = findAgentMatch(ag.name, lookupMap);
-      const canonicalName = existingLookup ? existingLookup.namaAgent : ag.name;
+      const canonicalName = existingLookup ? existingLookup.namaAgent! : ag.name;
+      const tapperKey = (ag.tapper || '').trim();
+      const compositeKey = `${canonicalName}|${tapperKey}`;
 
-      if (processedAgents.has(canonicalName)) continue;
-      processedAgents.add(canonicalName);
+      // Skip exact duplicate (same agent + same tapper)
+      if (processedAgentTappers.has(compositeKey)) continue;
+      processedAgentTappers.add(compositeKey);
 
-      newTargetSettings.push({ name: canonicalName, type: 'AGENT', peak1: Number(ag.peak1), peak2: Number(ag.peak2), peak3: Number(ag.peak3), monthly: Number(ag.monthly), daily: 0 });
+      // Validate: check for peak overlap with another row of same agent but different tapper
+      const existingForAgent = newTargetSettings.filter(s => s.name === canonicalName && s.type === 'AGENT');
+      let hasConflict = false;
+      for (const existing of existingForAgent) {
+        const conflict = (Number(ag.peak1) > 0 && existing.peak1 > 0) ||
+                         (Number(ag.peak2) > 0 && existing.peak2 > 0) ||
+                         (Number(ag.peak3) > 0 && existing.peak3 > 0);
+        if (conflict) {
+          hasConflict = true;
+          console.warn(`Peak conflict for agent ${canonicalName}: tapper ${tapperKey} vs ${existing.tapper}`);
+          break;
+        }
+      }
+      if (hasConflict) continue; // Skip conflicting rows (keep first valid one)
 
+      newTargetSettings.push({
+        name: canonicalName,
+        type: 'AGENT',
+        tapper: tapperKey,
+        peak1: Number(ag.peak1) || 0,
+        peak2: Number(ag.peak2) || 0,
+        peak3: Number(ag.peak3) || 0,
+        monthly: Number(ag.monthly) || 0,
+        daily: 0
+      });
+
+      // For LookupAgent — create one row per agent-tapper pair if metadata present
       if (ag.tapper || ag.teamLeader || ag.group) {
-        if (existingLookup) {
-          lookupUpdates.push({ id: existingLookup.id, data: { tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group } });
-        } else {
-          lookupCreates.push({ namaAgent: ag.name, tapper: ag.tapper, teamLeader: ag.teamLeader, group: ag.group });
+        // Find an existing lookup row for this exact agent-tapper combo
+        const existingForTapper = allLookupAgents.find(
+          a => a.namaAgent?.toLowerCase().trim() === canonicalName.toLowerCase().trim() &&
+               a.tapper?.toLowerCase().trim() === tapperKey.toLowerCase().trim()
+        );
+        if (existingForTapper) {
+          lookupUpdates.push({
+            id: existingForTapper.id,
+            data: { tapper: tapperKey, teamLeader: ag.teamLeader, group: ag.group, peak1: Number(ag.peak1) || 0, peak2: Number(ag.peak2) || 0, peak3: Number(ag.peak3) || 0 }
+          });
+        } else if (!processedLookupAgentNames.has(canonicalName + '|' + tapperKey)) {
+          // Also update the existing single row if this is the first tapper for this agent
+          if (existingLookup && !processedLookupAgentNames.has(canonicalName + '|__any')) {
+            lookupUpdates.push({
+              id: existingLookup.id,
+              data: { tapper: tapperKey, teamLeader: ag.teamLeader, group: ag.group, peak1: Number(ag.peak1) || 0, peak2: Number(ag.peak2) || 0, peak3: Number(ag.peak3) || 0 }
+            });
+            processedLookupAgentNames.add(canonicalName + '|__any');
+          } else {
+            lookupCreates.push({
+              namaAgent: canonicalName,
+              tapper: tapperKey,
+              teamLeader: ag.teamLeader || '',
+              group: ag.group || '',
+              peak1: Number(ag.peak1) || 0,
+              peak2: Number(ag.peak2) || 0,
+              peak3: Number(ag.peak3) || 0,
+            });
+          }
+          processedLookupAgentNames.add(canonicalName + '|' + tapperKey);
         }
       }
     }
 
-    // Now execute them rapidly but sequentially (no transaction) to prevent pool starvation
+    // Execute saves
     await this.prisma.qaTargetSetting.deleteMany();
     if (newTargetSettings.length > 0) {
       await this.prisma.qaTargetSetting.createMany({ data: newTargetSettings });
     }
 
-    if (processedAgents.size > 0) {
+    // Delete lookup agents that are no longer referenced (clean up orphans)
+    const allCanonicalNames = new Set(agents.map(ag => {
+      const el = findAgentMatch(ag.name, lookupMap);
+      return el ? el.namaAgent! : ag.name;
+    }));
+    if (allCanonicalNames.size > 0) {
       await this.prisma.lookupAgent.deleteMany({
-        where: { namaAgent: { notIn: Array.from(processedAgents) } }
+        where: { namaAgent: { notIn: Array.from(allCanonicalNames) } }
       });
     }
 
@@ -466,10 +571,9 @@ export class QaProductivityService {
         where: { id: lookupUpdates[i].id },
         data: lookupUpdates[i].data
       });
-      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10)); // Yield to pool
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
 
-    // Run the retroactive update in background so that it doesn't cause an HTTP request timeout
     this.retroactivelyUpdateTickets().catch(err => console.error('Error during retroactive update:', err));
     
     return { success: true };
@@ -570,6 +674,7 @@ export class QaProductivityService {
     
     const parsedAgents: any[] = [];
     const parsedQcs: any[] = [];
+    const conflictWarnings: string[] = [];
     
     ws.eachRow((row, rowNumber) => {
       if (rowNumber > 2) { // Skip headers
@@ -581,21 +686,55 @@ export class QaProductivityService {
         const group = row.getCell(3).value; // GROUPING (Col 3)
         const teamLeader = row.getCell(6).value; // TEAM LEADER (Col 6)
         
-        const peak1 = row.getCell(10).value; // Peak 1 (Col 10)
-        const peak2 = row.getCell(11).value; // Peak 2 (Col 11)
-        const peak3 = row.getCell(12).value; // Peak 3 (Col 12)
+        const peak1 = Number(row.getCell(10).value) || 0;
+        const peak2 = Number(row.getCell(11).value) || 0;
+        const peak3 = Number(row.getCell(12).value) || 0;
         const daily = row.getCell(9).value; // Jumlah Sample (Col 9)
         
+        const tapperName = qcName ? qcName.toString().trim() : '';
+        
         if (agentName) {
-          parsedAgents.push({
+          const newEntry = {
             name: agentName.toString().trim(),
             group: group ? group.toString().trim() : '',
             teamLeader: teamLeader ? teamLeader.toString().trim() : '',
-            tapper: qcName ? qcName.toString().trim() : '',
-            peak1: Number(peak1) || 0,
-            peak2: Number(peak2) || 0,
-            peak3: Number(peak3) || 0,
-          });
+            tapper: tapperName,
+            peak1,
+            peak2,
+            peak3,
+          };
+
+          // Check if same agent already exists in parsedAgents
+          const existingForAgent = parsedAgents.filter(a => a.name === newEntry.name);
+
+          if (existingForAgent.length === 0) {
+            // First occurrence — just add it
+            parsedAgents.push(newEntry);
+          } else {
+            const sameTapper = existingForAgent.find(a => a.tapper === newEntry.tapper);
+            if (sameTapper) {
+              // Exact duplicate (same agent + same tapper) — skip, keep the first
+            } else {
+              // Different tapper — check if peaks overlap
+              let hasConflict = false;
+              for (const existing of existingForAgent) {
+                const conflict = (peak1 > 0 && existing.peak1 > 0) ||
+                                 (peak2 > 0 && existing.peak2 > 0) ||
+                                 (peak3 > 0 && existing.peak3 > 0);
+                if (conflict) {
+                  hasConflict = true;
+                  conflictWarnings.push(
+                    `Konflik peak untuk agent "${newEntry.name}": tapper "${newEntry.tapper}" vs "${existing.tapper}" memiliki nilai peak yang tumpang tindih.`
+                  );
+                  break;
+                }
+              }
+              if (!hasConflict) {
+                // Valid split-tapper scenario — allow it
+                parsedAgents.push(newEntry);
+              }
+            }
+          }
         }
         
         if (qcName && daily !== null && daily !== undefined) {
@@ -610,7 +749,7 @@ export class QaProductivityService {
     // Deduplicate QCs in case multiple agents have the same QC
     const uniqueQcs = Array.from(new Map(parsedQcs.map(item => [item.name, item])).values());
     
-    return { parsedAgents, parsedQcs: uniqueQcs };
+    return { parsedAgents, parsedQcs: uniqueQcs, conflictWarnings };
     } catch (err) {
       console.error('parseExcelSettings crashed:', err);
       throw new BadRequestException(`Excel parsing failed: ${err.message}\nStack: ${err.stack}`);

@@ -1,23 +1,25 @@
 // ticket-scheduler.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+// import { InjectQueue } from '@nestjs/bullmq';
+// import { Queue } from 'bullmq';
 import { axiosPostWithRetry } from '../utils/axios-retry.util';
 import moment from 'moment';
 import { PrismaService } from 'prisma/prisma.service';
+import { DailyOcaTicketProcessor } from '../processor/daily-oca-ticket-processor';
 
 @Injectable()
 export class OcaTicketSchedulerService {
   private readonly logger = new Logger(OcaTicketSchedulerService.name);
 
   constructor(
-    @InjectQueue('ticket-processing') private ticketQueue: Queue,
+    // @InjectQueue('ticket-processing') private ticketQueue: Queue,
+    @Inject(forwardRef(() => DailyOcaTicketProcessor)) private readonly processor: DailyOcaTicketProcessor,
     private readonly prisma: PrismaService,
   ) {}
 
   // Run every 10 minutes
-  @Cron(process.env.CRON_SYNC_DAILY_OCA ?? CronExpression.EVERY_30_MINUTES)
+  // @Cron(process.env.CRON_SYNC_DAILY_OCA ?? CronExpression.EVERY_30_MINUTES)
   async handleCron() {
     this.logger.debug('Starting ticket sync...');
 
@@ -87,22 +89,22 @@ export class OcaTicketSchedulerService {
       // 3. Push to Queue
 
       if (ticketsToProcess.length > 0) {
-        // Chunk tickets to avoid massive Redis payloads which cause ioredis ECONNABORTED
+        // Chunk tickets
         const batchChunkSize = 10;
         for (let i = 0; i < ticketsToProcess.length; i += batchChunkSize) {
           const chunk = ticketsToProcess.slice(i, i + batchChunkSize);
           const chunkId = `batch-${page}-${chunk[0].ticket_id}-${moment().unix()}`;
 
-          const job = await this.ticketQueue.add(
-            'process-batch-tickets',
-            { tickets: chunk },
-            { jobId: chunkId },
-          );
-
-          this.logger.log(
-            `Queued batch page ${page} (chunk ${i / batchChunkSize + 1}) with ${chunk.length} tickets, jobId: ${job.id}`,
-          );
-          lastJob = job?.id ?? '';
+          // Process synchronously without BullMQ
+          try {
+            await this.processor.process({ data: { tickets: chunk } } as any);
+            this.logger.log(
+              `Processed batch page ${page} (chunk ${i / batchChunkSize + 1}) with ${chunk.length} tickets, jobId: ${chunkId}`,
+            );
+            lastJob = chunkId;
+          } catch (processErr: any) {
+            this.logger.error(`Failed to process chunk ${chunkId}: ${processErr.message}`);
+          }
         }
       }
 

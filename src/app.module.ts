@@ -53,35 +53,35 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
       },
     }),
 
-    BullModule.forRoot({
-      connection: process.env.REDIS_URL
-        ? {
-            host: new URL(process.env.REDIS_URL).hostname,
-            port: parseInt(new URL(process.env.REDIS_URL).port, 10) || (process.env.REDIS_URL.startsWith('rediss://') ? 6380 : 6379),
-            password: new URL(process.env.REDIS_URL).password || undefined,
-            username: new URL(process.env.REDIS_URL).username || undefined,
-            tls: process.env.REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-            keepAlive: 10000,
-          }
-        : {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: Number(process.env.REDIS_PORT) || 6379,
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-            retryStrategy: (times: number) => {
-              // Retry after increasing delays, up to 30 seconds
-              return Math.min(times * 1000, 30000);
-            },
-          },
-    }),
+    // BullModule.forRoot({
+    //   connection: process.env.REDIS_URL
+    //     ? {
+    //         host: new URL(process.env.REDIS_URL).hostname,
+    //         port: parseInt(new URL(process.env.REDIS_URL).port, 10) || (process.env.REDIS_URL.startsWith('rediss://') ? 6380 : 6379),
+    //         password: new URL(process.env.REDIS_URL).password || undefined,
+    //         username: new URL(process.env.REDIS_URL).username || undefined,
+    //         tls: process.env.REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+    //         maxRetriesPerRequest: null,
+    //         enableReadyCheck: false,
+    //         keepAlive: 10000,
+    //       }
+    //     : {
+    //         host: process.env.REDIS_HOST || 'localhost',
+    //         port: Number(process.env.REDIS_PORT) || 6379,
+    //         maxRetriesPerRequest: null,
+    //         enableReadyCheck: false,
+    //         retryStrategy: (times: number) => {
+    //           // Retry after increasing delays, up to 30 seconds
+    //           return Math.min(times * 1000, 30000);
+    //         },
+    //       },
+    // }),
     HttpModule,
     AuthModule,
     PrismaModule,
     // UploadModule, // Disabled temporarily to stop Redis Upstash limits
     DashboardModule,
-    // SchedulerModule, // Disabled temporarily to stop Redis Upstash limits
+    SchedulerModule,
     IncidentModule,
     NewsModule,
     LookupManagementModule,

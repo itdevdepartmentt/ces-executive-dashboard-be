@@ -465,6 +465,9 @@ model LookupAgent {
   group      String?
   tapper     String?
   teamLeader String? @map("team_leader")
+  peak1      Int     @default(0)
+  peak2      Int     @default(0)
+  peak3      Int     @default(0)
 
   @@map("lookup_agent")
 }
@@ -597,8 +600,9 @@ model QaTargetSetting {
   peak1     Int      @default(0)
   peak2     Int      @default(0)
   peak3     Int      @default(0)
+  tapper    String   @default("") // For AGENT type: which tapper owns this peak config
 
-  @@unique([name, type])
+  @@unique([name, type, tapper])
   @@map("qa_target_setting")
 }
 

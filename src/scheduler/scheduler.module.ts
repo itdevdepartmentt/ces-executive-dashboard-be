@@ -11,13 +11,13 @@ import { OcaReportSchedulerService } from 'src/worker/scheduler/oca-report-sched
 
 @Module({
   imports: [
-    BullModule.registerQueue({
-      name: 'ticket-processing', 
-      // limiter: {
-      //   max: 5,        // Limit to 5 requests
-      //   duration: 1000 // per 1 second (Rate limiting the API)
-      // }
-    }),
+    // BullModule.registerQueue({
+    //   name: 'ticket-processing', 
+    //   // limiter: {
+    //   //   max: 5,        // Limit to 5 requests
+    //   //   duration: 1000 // per 1 second (Rate limiting the API)
+    //   // }
+    // }),
     ExcelModule,
   ],
   controllers: [ScheduleController],
@@ -28,6 +28,6 @@ import { OcaReportSchedulerService } from 'src/worker/scheduler/oca-report-sched
     OcaUpsertService,
     OcaReportSchedulerService,
   ],
-  exports: [BullModule], // Export if other modules need to add jobs to this queue
+  // exports: [BullModule], // Export if other modules need to add jobs to this queue
 })
 export class SchedulerModule {}

@@ -63,7 +63,7 @@ export class QaReconciliationService {
     return newRekon;
   }
 
-  async findAll(user: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', search?: string, status?: string) {
+  async findAll(user: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', search?: string, status?: string, filters?: string) {
     const where: any = {};
     if (user.role === 'TL') {
       where.tlName = user.name;
@@ -77,7 +77,7 @@ export class QaReconciliationService {
 
     const rekons = await this.prisma.qaReconciliation.findMany({
       where,
-      orderBy: sortBy && sortBy !== 'agentName' && sortBy !== 'idTiket' ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
+      orderBy: sortBy && sortBy !== 'agentName' && sortBy !== 'idTiket' && sortBy !== 'peak' ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
     });
 
     let resolved = await Promise.all(rekons.map(async (rekon) => {
@@ -89,7 +89,7 @@ export class QaReconciliationService {
         ...rekon,
         agentName: tapping?.agent || '-',
         idTiket: tapping?.idTiket || '-',
-        peak: tapping?.peak || null,
+        peak: tapping?.peak ? tapping.peak.toString() : null,
       };
     }));
 
@@ -104,8 +104,25 @@ export class QaReconciliationService {
       );
     }
 
-    if (sortBy === 'agentName' || sortBy === 'idTiket') {
-      resolved.sort((a, b) => {
+    if (filters) {
+      try {
+        const parsedFilters = JSON.parse(filters);
+        Object.entries(parsedFilters).forEach(([key, values]: [string, any]) => {
+          if (Array.isArray(values) && values.length > 0) {
+            resolved = resolved.filter((item: any) => {
+              const val = item[key];
+              if (val === null || val === undefined) return false;
+              return values.some(v => String(val).toLowerCase() === String(v).toLowerCase());
+            });
+          }
+        });
+      } catch (e) {
+        console.error("Failed to parse filters", e);
+      }
+    }
+
+    if (sortBy === 'agentName' || sortBy === 'idTiket' || sortBy === 'peak') {
+      resolved.sort((a: any, b: any) => {
         const valA = a[sortBy] || '';
         const valB = b[sortBy] || '';
         if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
@@ -117,8 +134,8 @@ export class QaReconciliationService {
     return resolved;
   }
 
-  async exportData(user: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', search?: string, status?: string) {
-    const data = await this.findAll(user, sortBy, sortOrder, search, status);
+  async exportData(user: any, sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc', search?: string, status?: string, filters?: string) {
+    const data = await this.findAll(user, sortBy, sortOrder, search, status, filters);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Reconciliation');

@@ -26,7 +26,6 @@ export class RawDownloadController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    console.log(`Received OCA download request with startDate=${startDate} and endDate=${endDate}`);
     return this.sendExcelFile(res, 'oca', { startDate, endDate });
   }
 
@@ -46,7 +45,6 @@ export class RawDownloadController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    console.log(`Received News Log download request with startDate=${startDate} and endDate=${endDate}`);
     return this.sendExcelFile(res, 'news-log', { startDate, endDate });
   }
 
