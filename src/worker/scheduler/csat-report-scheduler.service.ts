@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 // import { InjectQueue } from '@nestjs/bullmq';
 // import { Queue } from 'bullmq';
@@ -48,8 +48,11 @@ export class CsatReportSchedulerService {
       this.logger.log(`Successfully downloaded report for processing: ${filePath}`);
 
       return { success: true, jobId: "sync", filePath };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Failed to process scheduled CSAT report', error.stack);
+      throw new InternalServerErrorException(
+        'Gagal menyambung ke API Telkom OCA (Timeout). Pastikan IP Server ini sudah di-whitelist oleh Telkom.',
+      );
     }
     ``;
   }
