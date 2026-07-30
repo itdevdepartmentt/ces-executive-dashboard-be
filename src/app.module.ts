@@ -54,6 +54,16 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     }),
 
     BullModule.forRoot({
+      defaultJobOptions: {
+        removeOnComplete: {
+          age: 3600, // Hapus otomatis setelah 1 jam (dalam detik)
+          count: 50, // Atau hapus jika sudah lebih dari 50 job sukses tersimpan
+        },
+        removeOnFail: {
+          age: 24 * 3600, // Biarkan job gagal selama 24 jam untuk keperluan debugging
+          count: 20, 
+        },
+      },
       connection: process.env.REDIS_URL
         ? {
             host: new URL(process.env.REDIS_URL).hostname,

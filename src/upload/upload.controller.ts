@@ -8,13 +8,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { diskStorage } from 'multer';
+import { InMemoryQueueService } from './in-memory-queue.service';
 
 @Controller('upload')
 export class UploadController {
-  constructor(@InjectQueue('excel-queue') private excelQueue: Queue) {}
+  constructor(private readonly queueService: InMemoryQueueService) {}
 
   @Post('csat-report')
   @UseInterceptors(
@@ -24,7 +23,7 @@ export class UploadController {
   )
   async uploadExcel(@UploadedFile() file: Express.Multer.File) {
     // 1. Send job to the queue immediately
-    const job = await this.excelQueue.add('process-csat-report', {
+    const job = await this.queueService.addJob('process-csat-report', {
       path: file.path,
       filename: file.originalname,
     });
@@ -44,7 +43,7 @@ export class UploadController {
   )
   async uploadOmnixReport(@UploadedFile() file: Express.Multer.File) {
     // 1. Send job to the queue immediately
-    const job = await this.excelQueue.add('process-omnix-report', {
+    const job = await this.queueService.addJob('process-omnix-report', {
       path: file.path,
       filename: file.originalname,
     });
@@ -64,7 +63,7 @@ export class UploadController {
   )
   async uploadCallReport(@UploadedFile() file: Express.Multer.File) {
     // 1. Send job to the queue immediately
-    const job = await this.excelQueue.add('process-call-report', {
+    const job = await this.queueService.addJob('process-call-report', {
       path: file.path,
       filename: file.originalname,
     });
@@ -85,7 +84,7 @@ export class UploadController {
   )
   async uploadAvayaReport(@UploadedFile() file: Express.Multer.File) {
     // 1. Send job to the queue immediately
-    const job = await this.excelQueue.add('process-avaya-report', {
+    const job = await this.queueService.addJob('process-avaya-report', {
       path: file.path,
       filename: file.originalname,
     });
@@ -106,7 +105,7 @@ export class UploadController {
   )
   async uploadOcaReport(@UploadedFile() file: Express.Multer.File) {
     // 1. Send job to the queue immediately
-    const job = await this.excelQueue.add('process-oca-report', {
+    const job = await this.queueService.addJob('process-oca-report', {
       path: file.path,
       filename: file.originalname,
     });
@@ -120,36 +119,8 @@ export class UploadController {
 
   @Get('status/:jobId')
   async getJobStatus(@Param('jobId') jobId: string) {
-    const job = await this.excelQueue.getJob(jobId);
-
-    if (!job) {
-      throw new NotFoundException(`Job ${jobId} not found`);
-    }
-
-    // 1. Check if job is finished
-    const isCompleted = await job.isCompleted();
-    const isFailed = await job.isFailed();
-
-    if (isCompleted) {
-      // 2. Return the data you returned from the processor
-      return {
-        status: 'completed',
-        result: job.returnvalue, // This is your { stats: { inserted, updated } }
-      };
-    }
-
-    if (isFailed) {
-      return {
-        status: 'failed',
-        error: job.failedReason,
-      };
-    }
-
-    // 3. If still running, return progress (optional)
-    // You can use job.progress if you implemented updateProgress inside the processor
-    return {
-      status: 'active',
-      progress: job.progress,
-    };
+    // Our in-memory service automatically returns the correct format: 
+    // { status: 'completed' | 'active' | 'failed', result: ..., progress: ... }
+    return this.queueService.getJobStatus(jobId);
   }
 }

@@ -35,5 +35,6 @@ import { CsatReportSchedulerService } from './scheduler/csat-report-scheduler.se
     CsatReportSchedulerService,
   ],
   // exports: [BullModule], 
+  exports: [ExcelProcessor],
 })
 export class ExcelModule {}
