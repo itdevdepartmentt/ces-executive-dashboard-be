@@ -1,7 +1,7 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-// import { InjectQueue } from '@nestjs/bullmq';
-// import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,7 +11,7 @@ import moment from 'moment-timezone'; // Highly recommended for WIB handling
 export class OcaReportSchedulerService {
   private readonly logger = new Logger(OcaReportSchedulerService.name);
 
-  constructor() {} // Removed excelQueue
+  constructor(@InjectQueue('excel-queue') private excelQueue: Queue) {}
 
   // Run at 02:00 AM WIB (Asia/Jakarta)
   // @Cron('0 2 * * *', { timeZone: 'Asia/Jakarta' })
@@ -46,14 +46,14 @@ export class OcaReportSchedulerService {
       // 4. Download file to local storage
       const filePath = await this.downloadFile(downloadUrl);
 
-      // 5. Removed BullMQ queueing for now
-      // const job = await this.excelQueue.add('process-oca-report', {
-      //   path: filePath,
-      //   filename: path.basename(filePath),
-      // });
+      // 5. Add job to BullMQ queue
+      const job = await this.excelQueue.add('process-oca-report', {
+        path: filePath,
+        filename: path.basename(filePath),
+      });
       
       this.logger.log(`Successfully downloaded report for processing: ${filePath}`);
-      return { success: true, jobId: "sync", filePath };
+      return { success: true, jobId: job.id, filePath };
     } catch (error: any) {
       this.logger.error('Failed to process scheduled OCA report', error.stack);
       throw new InternalServerErrorException(

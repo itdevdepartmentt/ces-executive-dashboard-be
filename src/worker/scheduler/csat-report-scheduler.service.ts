@@ -1,7 +1,7 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-// import { InjectQueue } from '@nestjs/bullmq';
-// import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,7 +11,7 @@ import moment from 'moment-timezone'; // Highly recommended for WIB handling
 export class CsatReportSchedulerService {
   private readonly logger = new Logger(CsatReportSchedulerService.name);
 
-  constructor() {} // Removed excelQueue
+  constructor(@InjectQueue('excel-queue') private excelQueue: Queue) {}
 
   // Run at 02:00 AM WIB (Asia/Jakarta)
   // @Cron(process.env.CRON_SYNC_DAILY_CSAT ?? CronExpression.EVERY_HOUR)
@@ -40,15 +40,20 @@ export class CsatReportSchedulerService {
       // 4. Download file to local storage
       const filePath = await this.downloadFile(downloadUrl);
 
-      // 5. Removed BullMQ queueing for now
-      // const job = await this.excelQueue.add('process-csat-report', {
-      //   path: filePath,
-      //   filename: path.basename(filePath),
-      // });
+      // 5. Add job to BullMQ queue
+      const job = await this.excelQueue.add('process-csat-report', {
+        path: filePath,
+        filename: path.basename(filePath),
+      });
       this.logger.log(`Successfully downloaded report for processing: ${filePath}`);
 
+<<<<<<< HEAD
       return { success: true, jobId: "sync", filePath };
     } catch (error: any) {
+=======
+      return { success: true, jobId: job.id, filePath };
+    } catch (error) {
+>>>>>>> 80234ce912168456477a0036b5c0e07183815840
       this.logger.error('Failed to process scheduled CSAT report', error.stack);
       throw new InternalServerErrorException(
         'Gagal menyambung ke API Telkom OCA (Timeout). Pastikan IP Server ini sudah di-whitelist oleh Telkom.',
