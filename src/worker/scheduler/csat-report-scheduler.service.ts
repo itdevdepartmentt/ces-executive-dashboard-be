@@ -47,13 +47,8 @@ export class CsatReportSchedulerService {
       });
       this.logger.log(`Successfully downloaded report for processing: ${filePath}`);
 
-<<<<<<< HEAD
-      return { success: true, jobId: "sync", filePath };
-    } catch (error: any) {
-=======
       return { success: true, jobId: job.id, filePath };
-    } catch (error) {
->>>>>>> 80234ce912168456477a0036b5c0e07183815840
+    } catch (error: any) {
       this.logger.error('Failed to process scheduled CSAT report', error.stack);
       throw new InternalServerErrorException(
         'Gagal menyambung ke API Telkom OCA (Timeout). Pastikan IP Server ini sudah di-whitelist oleh Telkom.',
