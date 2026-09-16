@@ -1,3 +1,7 @@
+// Harus paling atas: env dibaca saat import-time (mis. @Cron, koneksi BullMQ),
+// jadi .env wajib termuat sebelum AppModule di-import.
+// Di production dotenv tidak menimpa env yang sudah di-inject runtime.
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
