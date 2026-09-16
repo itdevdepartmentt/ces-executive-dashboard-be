@@ -1,6 +1,4 @@
 // ticket.processor.ts
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
 import { axiosPostWithRetry } from '../utils/axios-retry.util';
 import { PrismaService } from 'prisma/prisma.service';
 import { calculateSlaStatus, determineEskalasi } from '../utils/rules.constant';
@@ -12,24 +10,31 @@ import {
   VIP_REGEX,
 } from '../utils/oca-ticket.utils';
 import { OcaUpsertService } from '../repository/oca-upsert.service';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ExcelUtils } from '../excel-utils.helper';
+import { OCA_AUTH, OCA_ENDPOINTS } from '../utils/oca-api.constant';
 
-@Processor('ticket-processing', { concurrency: 1 })
-export class DailyOcaTicketProcessor extends WorkerHost {
+export interface OcaTicketBatchSummary {
+  total: number;
+  saved: number;
+  failed: number;
+}
+
+/**
+ * Bukan lagi BullMQ WorkerHost: queue 'ticket-processing' sudah tidak dipakai
+ * (scheduler memanggil kelas ini langsung). Mempertahankan @Processor membuat
+ * BullMQ tetap menjalankan Worker dan menulis metadata queue ke Redis untuk
+ * antrean yang tidak pernah menerima job.
+ */
+@Injectable()
+export class DailyOcaTicketProcessor {
   private readonly logger = new Logger(DailyOcaTicketProcessor.name);
   constructor(
-    private readonly prisma: PrismaService, // Assuming Prisma
+    private readonly prisma: PrismaService,
     private readonly ocaUpsertService: OcaUpsertService,
-    // Inject your logic services here
-  ) {
-    super();
-  }
+  ) {}
 
-  async process(job: Job<any, any, string>): Promise<any> {
-    const { ticketId, baseData } = job.data;
-    const { tickets } = job.data; // <--- Receive Array
-    const resultsToUpsert = [];
+  async processTickets(tickets: any[]): Promise<OcaTicketBatchSummary> {
 
     const kipMap = await createLookupMap(
       this.prisma.lookupKIP,
@@ -74,14 +79,9 @@ export class DailyOcaTicketProcessor extends WorkerHost {
         try {
           // A. Hit API
           const activityRes = await axiosPostWithRetry(
-            'https://webapigw.ocatelkom.co.id/oca-interaction/ticketing/list-activity',
+            OCA_ENDPOINTS.listActivity,
             { ticket_id: baseTicket.ticket_id },
-            {
-              auth: {
-                username: 'tsel-app-connectivity',
-                password: '@tsel198xMu918230pp',
-              },
-            }
+            { auth: OCA_AUTH },
           );
   
           // B. Logic (Reconstruct & Map)
@@ -191,8 +191,19 @@ export class DailyOcaTicketProcessor extends WorkerHost {
             isVip: isVip,
           };
         } catch (error: any) {
+          // Detail HTTP penting: tanpa ini, 401/403 dari list-activity tidak
+          // bisa dibedakan dari timeout jaringan lewat log.
+          const status = error?.response?.status;
+          const code = error?.code;
           this.logger.error(
-            `Failed to process ticket ${baseTicket.ticket_id}: ${error.message}`,
+            `Failed to process ticket ${baseTicket.ticket_id}: ` +
+              [
+                code ? `code=${code}` : null,
+                status ? `status=${status}` : null,
+                `message=${error?.message ?? String(error)}`,
+              ]
+                .filter(Boolean)
+                .join(' | '),
           );
           return null; // Return null so we can filter it out later
         }
@@ -210,12 +221,27 @@ export class DailyOcaTicketProcessor extends WorkerHost {
 
     // Filter out any failures (nulls)
     const validRows = processedResults.filter((row) => row !== null);
+    const failedCount = processedResults.length - validRows.length;
+
+    if (failedCount > 0) {
+      this.logger.warn(
+        `${failedCount} dari ${tickets.length} tiket gagal diproses dan TIDAK tersimpan.`,
+      );
+    }
 
     // 3. Save as BATCH (Single Database Transaction)
     if (validRows.length > 0) {
       await this.ocaUpsertService.saveBatch(validRows);
       this.logger.log(`Successfully saved ${validRows.length} tickets.`);
     }
+
+    // Dikembalikan ke scheduler supaya kegagalan per-tiket ikut terhitung,
+    // bukan hilang diam-diam di dalam batch yang dianggap sukses.
+    return {
+      total: tickets.length,
+      saved: validRows.length,
+      failed: failedCount,
+    };
   }
 
   /**

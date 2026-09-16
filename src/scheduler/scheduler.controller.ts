@@ -68,8 +68,11 @@ export class ScheduleController {
 
   @Post('sync-daily-oca')
   async syncDailyOca() {
-    // Run in background without awaiting to prevent timeout
-    this.ocaTicketSchedulerService.handleCron().catch(e => {
+    // Run in background without awaiting to prevent timeout.
+    // Hasilnya tidak bisa ditunggu di sini, jadi respons ini HANYA berarti
+    // "sync dimulai" — bukan "sync berhasil". Cek GET /schedule/sync-status
+    // untuk hasil sebenarnya.
+    this.ocaTicketSchedulerService.handleCron().catch((e) => {
       console.error('Background sync error:', e);
     });
 
@@ -79,7 +82,8 @@ export class ScheduleController {
       : null;
 
     return {
-      message: 'All ticket batches are syncing in the background.',
+      message:
+        'Sync dimulai di background. Cek /schedule/sync-status untuk hasilnya.',
       jobId: 'background-sync',
       lastSync: lastSync,
     };
@@ -91,6 +95,19 @@ export class ScheduleController {
     const lastSyncWib = lastSyncUtc
       ? moment(lastSyncUtc).tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss')
       : null;
-    return { lastSyncWib };
+
+    // lastSyncWib dipertahankan apa adanya untuk kompatibilitas frontend.
+    // Sejak perbaikan, nilainya hanya diperbarui saat sync benar-benar bersih,
+    // jadi sekarang bisa dipercaya sebagai penanda keberhasilan.
+    return {
+      lastSyncWib,
+      lastRun: this.ocaTicketSchedulerService.getLastRunStatus(),
+    };
+  }
+
+  /** Diagnosa: hasil run sync terakhir di proses ini, termasuk pesan error. */
+  @Get('sync-status')
+  getSyncStatus() {
+    return this.ocaTicketSchedulerService.getLastRunStatus();
   }
 }
