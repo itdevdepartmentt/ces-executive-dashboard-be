@@ -8,12 +8,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { diskStorage } from 'multer';
 import { InMemoryQueueService } from './in-memory-queue.service';
 
 @Controller('upload')
 export class UploadController {
-  constructor(private readonly queueService: InMemoryQueueService) {}
+  constructor(
+    private readonly queueService: InMemoryQueueService,
+    @InjectQueue('excel-queue') private readonly excelQueue: Queue,
+  ) {}
 
   @Post('csat-report')
   @UseInterceptors(
@@ -119,8 +124,41 @@ export class UploadController {
 
   @Get('status/:jobId')
   async getJobStatus(@Param('jobId') jobId: string) {
-    // Our in-memory service automatically returns the correct format: 
-    // { status: 'completed' | 'active' | 'failed', result: ..., progress: ... }
-    return this.queueService.getJobStatus(jobId);
+    // Upload lewat controller ini masuk ke antrean in-memory (id berupa string
+    // acak). Tapi /schedule/trigger-oca-sync menaruh job-nya di BullMQ
+    // 'excel-queue' (id numerik) dan frontend memakai endpoint yang sama untuk
+    // memantau keduanya. Tanpa fallback, job BullMQ selalu balas 404 dan
+    // statusnya tersangkut 'active' selamanya di UI.
+    try {
+      return this.queueService.getJobStatus(jobId);
+    } catch (err) {
+      if (!(err instanceof NotFoundException)) throw err;
+      return this.getBullJobStatus(jobId);
+    }
+  }
+
+  /** Bentuk responsnya disamakan dengan InMemoryQueueService agar frontend tidak perlu tahu bedanya. */
+  private async getBullJobStatus(jobId: string) {
+    const job = await this.excelQueue.getJob(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job ${jobId} not found`);
+    }
+
+    const state = await job.getState();
+    if (state === 'completed') {
+      return { status: 'completed', result: job.returnvalue ?? null };
+    }
+    if (state === 'failed') {
+      return {
+        status: 'failed',
+        error: job.failedReason || 'Unknown processing error',
+      };
+    }
+
+    // waiting / active / delayed / paused -> frontend menampilkannya sebagai berjalan
+    return {
+      status: 'active',
+      progress: typeof job.progress === 'number' ? job.progress : 0,
+    };
   }
 }
