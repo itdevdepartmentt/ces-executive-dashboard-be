@@ -40,6 +40,8 @@ export interface OcaSyncResult {
   /** true bila data hari ini diambil lewat report CSV karena get-list gagal. */
   fallbackUsed: boolean;
   fallbackError: string | null;
+  /** Diisi bila fallback sengaja dilewati (mis. pembatas laju), agar UI bisa menjelaskannya. */
+  fallbackSkippedReason: string | null;
 }
 
 const DEFAULT_CRON = CronExpression.EVERY_30_MINUTES;
@@ -50,6 +52,13 @@ const DEFAULT_CRON = CronExpression.EVERY_30_MINUTES;
  * mereka dengan puluhan permintaan report per hari.
  */
 const FALLBACK_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Klik manual adalah permintaan eksplisit dari manusia, jadi boleh menembus
+ * pembatas sejam. Lantai pendek ini hanya mencegah tombol yang diklik
+ * berkali-kali membanjiri OCA dengan permintaan report.
+ */
+const FALLBACK_MANUAL_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Batas menunggu job CSV selesai diproses sebelum dianggap gagal. */
 const FALLBACK_JOB_TIMEOUT_MS = 5 * 60 * 1000;
@@ -106,7 +115,10 @@ export class OcaTicketSchedulerService {
     await this.handleCron();
   }
 
-  async handleCron(): Promise<OcaSyncResult> {
+  async handleCron(
+    options: { force?: boolean } = {},
+  ): Promise<OcaSyncResult> {
+    const force = options.force === true;
     const startedAt = new Date();
 
     if (this.isRunning) {
@@ -138,6 +150,7 @@ export class OcaTicketSchedulerService {
     let fetchError: string | null = null;
     let fallbackUsed = false;
     let fallbackError: string | null = null;
+    let fallbackSkippedReason: string | null = null;
 
     try {
       while (hasMore) {
@@ -263,7 +276,12 @@ export class OcaTicketSchedulerService {
       //    download-ticket-report) dan menghasilkan field yang setara, termasuk
       //    semua custom field. Begitu get-list pulih, blok ini berhenti sendiri.
       const getListFailedCompletely = Boolean(fetchError) && pagesFetched === 0;
-      if (getListFailedCompletely && this.isFallbackAllowed()) {
+      const gate = getListFailedCompletely
+        ? this.isFallbackAllowed(force)
+        : { allowed: false, reason: null };
+      fallbackSkippedReason = gate.reason;
+
+      if (getListFailedCompletely && gate.allowed) {
         this.lastFallbackAt = Date.now();
         fallbackUsed = true;
         this.logger.warn(
@@ -332,6 +350,7 @@ export class OcaTicketSchedulerService {
         lastJob,
         fallbackUsed,
         fallbackError,
+        fallbackSkippedReason,
       });
 
       // Angka di bawah hanya menghitung jalur get-list. Kalau data masuk lewat
@@ -351,21 +370,36 @@ export class OcaTicketSchedulerService {
     }
   }
 
-  /** Fallback dibatasi sejam sekali, dan bisa dimatikan lewat env. */
-  private isFallbackAllowed(): boolean {
+  /**
+   * Cron dibatasi sejam sekali; klik manual (force) hanya dibatasi 5 menit.
+   * Mengembalikan alasan penolakan agar UI bisa menjelaskan kenapa sync
+   * "gagal" padahal datanya baru saja masuk.
+   */
+  private isFallbackAllowed(force: boolean): {
+    allowed: boolean;
+    reason: string | null;
+  } {
     if (process.env.OCA_SYNC_FALLBACK_ENABLED === 'false') {
-      this.logger.debug('Fallback report dilewati (OCA_SYNC_FALLBACK_ENABLED=false).');
-      return false;
+      return {
+        allowed: false,
+        reason: 'fallback dimatikan lewat OCA_SYNC_FALLBACK_ENABLED',
+      };
     }
+
+    const minInterval = force
+      ? FALLBACK_MANUAL_MIN_INTERVAL_MS
+      : FALLBACK_MIN_INTERVAL_MS;
     const sinceLast = Date.now() - this.lastFallbackAt;
-    if (this.lastFallbackAt > 0 && sinceLast < FALLBACK_MIN_INTERVAL_MS) {
-      const menit = Math.ceil((FALLBACK_MIN_INTERVAL_MS - sinceLast) / 60000);
-      this.logger.log(
-        `Fallback report dilewati, baru dijalankan ${Math.floor(sinceLast / 60000)} menit lalu (tunggu ${menit} menit lagi).`,
-      );
-      return false;
+
+    if (this.lastFallbackAt > 0 && sinceLast < minInterval) {
+      const lewat = Math.floor(sinceLast / 60000);
+      const tunggu = Math.ceil((minInterval - sinceLast) / 60000);
+      const reason = `baru dijalankan ${lewat} menit lalu, tunggu ${tunggu} menit lagi`;
+      this.logger.log(`Fallback report dilewati: ${reason}.`);
+      return { allowed: false, reason };
     }
-    return true;
+
+    return { allowed: true, reason: null };
   }
 
   /**
@@ -454,6 +488,7 @@ export class OcaTicketSchedulerService {
       lastJob: partial.lastJob ?? '',
       fallbackUsed: partial.fallbackUsed ?? false,
       fallbackError: partial.fallbackError ?? null,
+      fallbackSkippedReason: partial.fallbackSkippedReason ?? null,
     };
 
     // Run yang dilewati tidak boleh menimpa hasil diagnosa run sebelumnya.

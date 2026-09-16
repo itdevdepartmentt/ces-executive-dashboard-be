@@ -75,7 +75,14 @@ export class ScheduleController {
       };
     }
 
-    return { status: 'failed', error: run.error ?? 'Sync gagal tanpa detail.' };
+    const pesan = [run.error ?? 'Sync gagal tanpa detail.'];
+    if (run.fallbackSkippedReason) {
+      pesan.push(`Fallback report dilewati: ${run.fallbackSkippedReason}.`);
+    }
+    if (run.fallbackError) {
+      pesan.push(`Fallback report gagal: ${run.fallbackError}.`);
+    }
+    return { status: 'failed', error: pesan.join(' ') };
   }
 
   @Post('trigger-oca-sync')
@@ -115,7 +122,7 @@ export class ScheduleController {
     // Hasilnya tidak bisa ditunggu di sini, jadi respons ini HANYA berarti
     // "sync dimulai" — bukan "sync berhasil". Cek GET /schedule/sync-status
     // untuk hasil sebenarnya.
-    this.ocaTicketSchedulerService.handleCron().catch((e) => {
+    this.ocaTicketSchedulerService.handleCron({ force: true }).catch((e) => {
       console.error('Background sync error:', e);
     });
 
