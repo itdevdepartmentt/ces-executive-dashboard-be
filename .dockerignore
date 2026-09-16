@@ -7,3 +7,8 @@ Dockerfile
 docker-compose.yml
 npm-debug.log
 
+
+# Jangan ikut ter-build ke image: secret bocor ke layer image, dan REDIS_URL
+# di dalamnya menimpa konfigurasi dari docker-compose saat runtime.
+.env
+.env.*
