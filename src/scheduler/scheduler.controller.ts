@@ -50,11 +50,13 @@ export class ScheduleController {
       };
     }
 
-    if (run.status === 'success') {
+    if (run.status === 'success' || run.status === 'fallback') {
       return {
         status: 'completed',
         progress: 100,
         result: {
+          // 'report' menandakan get-list gagal dan data diambil lewat CSV.
+          via: run.status === 'fallback' ? 'report' : 'get-list',
           ticketsSeen: run.ticketsSeen,
           ticketsSaved: run.ticketsSaved,
           finishedAt: run.finishedAt,

@@ -3,6 +3,8 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 // import { InjectQueue } from '@nestjs/bullmq';
 // import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { axiosPostWithRetry } from '../utils/axios-retry.util';
 // moment-timezone (bukan 'moment') supaya .tz() selalu tersedia di file ini,
 // tanpa bergantung pada file lain yang kebetulan sudah me-load-nya duluan.
@@ -10,8 +12,14 @@ import moment from 'moment-timezone';
 import { PrismaService } from 'prisma/prisma.service';
 import { DailyOcaTicketProcessor } from '../processor/daily-oca-ticket-processor';
 import { OCA_AUTH, OCA_ENDPOINTS } from '../utils/oca-api.constant';
+import { OcaReportSchedulerService } from './oca-report-scheduler.service';
 
-export type OcaSyncStatus = 'success' | 'partial' | 'failed' | 'skipped';
+export type OcaSyncStatus =
+  | 'success'
+  | 'fallback'
+  | 'partial'
+  | 'failed'
+  | 'skipped';
 
 export interface OcaSyncResult {
   status: OcaSyncStatus;
@@ -29,9 +37,22 @@ export interface OcaSyncResult {
   ticketsFailed: number;
   error: string | null;
   lastJob: string;
+  /** true bila data hari ini diambil lewat report CSV karena get-list gagal. */
+  fallbackUsed: boolean;
+  fallbackError: string | null;
 }
 
 const DEFAULT_CRON = CronExpression.EVERY_30_MINUTES;
+
+/**
+ * get-list murah dicoba tiap 15 menit, tapi jalur report menyuruh OCA membuat
+ * file CSV baru setiap kali. Dibatasi sejam sekali supaya tidak membebani
+ * mereka dengan puluhan permintaan report per hari.
+ */
+const FALLBACK_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Batas menunggu job CSV selesai diproses sebelum dianggap gagal. */
+const FALLBACK_JOB_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Cron dari env divalidasi seadanya (jumlah field) supaya typo tidak bikin
@@ -66,7 +87,12 @@ export class OcaTicketSchedulerService {
     @Inject(forwardRef(() => DailyOcaTicketProcessor))
     private readonly processor: DailyOcaTicketProcessor,
     private readonly prisma: PrismaService,
+    private readonly reportScheduler: OcaReportSchedulerService,
+    @InjectQueue('excel-queue') private readonly excelQueue: Queue,
   ) {}
+
+  /** Kapan fallback report terakhir dijalankan, untuk pembatas laju. */
+  private lastFallbackAt = 0;
 
   @Cron(resolveCronExpression(process.env.CRON_SYNC_DAILY_OCA), {
     name: 'sync-daily-oca',
@@ -110,6 +136,8 @@ export class OcaTicketSchedulerService {
     let ticketsSaved = 0;
     let ticketsFailed = 0;
     let fetchError: string | null = null;
+    let fallbackUsed = false;
+    let fallbackError: string | null = null;
 
     try {
       while (hasMore) {
@@ -230,19 +258,42 @@ export class OcaTicketSchedulerService {
         }
       }
 
-      // 4. Tentukan status akhir
-      const status: OcaSyncStatus = fetchError
-        ? pagesFetched > 0
-          ? 'partial'
-          : 'failed'
-        : chunksFailed > 0 || ticketsFailed > 0
-          ? 'partial'
-          : 'success';
+      // 4. get-list gagal total -> ambil data hari ini lewat jalur report CSV.
+      //    Jalur itu memakai endpoint OCA yang berbeda (request_report +
+      //    download-ticket-report) dan menghasilkan field yang setara, termasuk
+      //    semua custom field. Begitu get-list pulih, blok ini berhenti sendiri.
+      const getListFailedCompletely = Boolean(fetchError) && pagesFetched === 0;
+      if (getListFailedCompletely && this.isFallbackAllowed()) {
+        this.lastFallbackAt = Date.now();
+        fallbackUsed = true;
+        this.logger.warn(
+          `get-list gagal total, beralih ke fallback report CSV untuk ${todayDate}...`,
+        );
+        const fallback = await this.runReportFallback(todayDate);
+        fallbackError = fallback.error;
+        if (fallback.ok) {
+          this.logger.log('Fallback report berhasil: data tersimpan lewat CSV.');
+        } else {
+          this.logger.error(`Fallback report gagal: ${fallback.error}`);
+        }
+      }
+
+      // 5. Tentukan status akhir
+      let status: OcaSyncStatus;
+      if (!fetchError && chunksFailed === 0 && ticketsFailed === 0) {
+        status = 'success';
+      } else if (fallbackUsed && !fallbackError) {
+        status = 'fallback';
+      } else if (getListFailedCompletely) {
+        status = 'failed';
+      } else {
+        status = 'partial';
+      }
 
       // lastSync HANYA diperbarui saat run benar-benar bersih, supaya angka di
       // dashboard tidak berbohong ketika API OCA gagal di page pertama.
       let lastSyncApplied: Date | null = null;
-      if (status === 'success') {
+      if (status === 'success' || status === 'fallback') {
         const now = new Date();
         try {
           await this.prisma.ocaDailySync.upsert({
@@ -279,18 +330,89 @@ export class OcaTicketSchedulerService {
         ticketsFailed,
         error: fetchError,
         lastJob,
+        fallbackUsed,
+        fallbackError,
       });
 
+      // Angka di bawah hanya menghitung jalur get-list. Kalau data masuk lewat
+      // fallback, jumlahnya ada di log ExcelProcessor, bukan di sini.
+      const viaFallback =
+        fallbackUsed && !fallbackError ? ' (data masuk lewat fallback report CSV)' : '';
       this.logger.log(
         `Ticket sync process completed — status=${status} durasi=${result.durationMs}ms ` +
           `pages=${pagesFetched} tiket=${ticketsSeen} diproses=${ticketsToProcessTotal} ` +
-          `tersimpan=${ticketsSaved} tiketGagal=${ticketsFailed} chunkGagal=${chunksFailed}`,
+          `tersimpan=${ticketsSaved} tiketGagal=${ticketsFailed} chunkGagal=${chunksFailed}` +
+          viaFallback,
       );
 
       return result;
     } finally {
       this.isRunning = false;
     }
+  }
+
+  /** Fallback dibatasi sejam sekali, dan bisa dimatikan lewat env. */
+  private isFallbackAllowed(): boolean {
+    if (process.env.OCA_SYNC_FALLBACK_ENABLED === 'false') {
+      this.logger.debug('Fallback report dilewati (OCA_SYNC_FALLBACK_ENABLED=false).');
+      return false;
+    }
+    const sinceLast = Date.now() - this.lastFallbackAt;
+    if (this.lastFallbackAt > 0 && sinceLast < FALLBACK_MIN_INTERVAL_MS) {
+      const menit = Math.ceil((FALLBACK_MIN_INTERVAL_MS - sinceLast) / 60000);
+      this.logger.log(
+        `Fallback report dilewati, baru dijalankan ${Math.floor(sinceLast / 60000)} menit lalu (tunggu ${menit} menit lagi).`,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Minta report CSV ke OCA lalu tunggu sampai file-nya benar-benar selesai
+   * diproses. Sengaja ditunggu: kalau hanya diantrekan, kita akan mengklaim
+   * sukses padahal datanya belum tentu masuk.
+   */
+  private async runReportFallback(
+    date: string,
+  ): Promise<{ ok: boolean; error: string | null }> {
+    try {
+      const res = await this.reportScheduler.processOcaReport(date, date);
+      const jobId = res?.jobId;
+      if (!jobId) {
+        return { ok: false, error: 'processOcaReport tidak mengembalikan jobId' };
+      }
+      return await this.waitForExcelJob(String(jobId));
+    } catch (err: any) {
+      return { ok: false, error: this.describeError(err) };
+    }
+  }
+
+  private async waitForExcelJob(
+    jobId: string,
+  ): Promise<{ ok: boolean; error: string | null }> {
+    const deadline = Date.now() + FALLBACK_JOB_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const job = await this.excelQueue.getJob(jobId);
+      if (!job) {
+        return { ok: false, error: `Job report ${jobId} hilang dari antrean` };
+      }
+      const state = await job.getState();
+      if (state === 'completed') {
+        return { ok: true, error: null };
+      }
+      if (state === 'failed') {
+        return {
+          ok: false,
+          error: job.failedReason || 'Job report gagal tanpa detail',
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    return {
+      ok: false,
+      error: `Timeout menunggu job report ${jobId} selesai diproses`,
+    };
   }
 
   async getLastSyncTime() {
@@ -330,6 +452,8 @@ export class OcaTicketSchedulerService {
       ticketsFailed: partial.ticketsFailed ?? 0,
       error: partial.error ?? null,
       lastJob: partial.lastJob ?? '',
+      fallbackUsed: partial.fallbackUsed ?? false,
+      fallbackError: partial.fallbackError ?? null,
     };
 
     // Run yang dilewati tidak boleh menimpa hasil diagnosa run sebelumnya.
