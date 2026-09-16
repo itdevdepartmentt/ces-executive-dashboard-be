@@ -25,14 +25,55 @@ export class ScheduleController {
     private readonly ocaTicketSchedulerService: OcaTicketSchedulerService,
   ) {}
 
+  /**
+   * Dipakai halaman dashboard untuk memantau tombol sync harian.
+   *
+   * Sebelumnya mengembalikan 'completed' secara hardcoded, sehingga sync yang
+   * gagal 503 pun tetap memunculkan toast hijau "Sync Complete" di UI. Sekarang
+   * memantulkan hasil run yang sebenarnya. Bentuk responsnya sengaja dijaga
+   * ('active' | 'completed' | 'failed' + error) supaya frontend tidak perlu
+   * diubah — dia sudah menangani ketiganya.
+   */
   @Get('status/:jobId')
-  async getJobStatus(@Param('jobId') jobId: string) {
-    // We bypassed BullMQ, so all jobs returned from the API are already completed synchronously.
-    return {
-      status: 'completed',
-      progress: 100,
-      result: null,
-    };
+  getJobStatus(@Param('jobId') _jobId: string) {
+    const run = this.ocaTicketSchedulerService.getLastRunStatus();
+
+    if (run.isRunning) {
+      return { status: 'active', progress: 0 };
+    }
+
+    if (run.status === 'never-run') {
+      return {
+        status: 'failed',
+        error:
+          'Tidak ada hasil sync yang tercatat. Backend kemungkinan restart saat sync berjalan.',
+      };
+    }
+
+    if (run.status === 'success') {
+      return {
+        status: 'completed',
+        progress: 100,
+        result: {
+          ticketsSeen: run.ticketsSeen,
+          ticketsSaved: run.ticketsSaved,
+          finishedAt: run.finishedAt,
+        },
+      };
+    }
+
+    if (run.status === 'partial') {
+      // Sebagian data hilang. Ditandai gagal supaya tidak lolos diam-diam.
+      return {
+        status: 'failed',
+        error:
+          `Sync selesai sebagian: ${run.ticketsSaved} tiket tersimpan, ` +
+          `${run.ticketsFailed} tiket gagal, ${run.chunksFailed} batch gagal.` +
+          (run.error ? ` ${run.error}` : ''),
+      };
+    }
+
+    return { status: 'failed', error: run.error ?? 'Sync gagal tanpa detail.' };
   }
 
   @Post('trigger-oca-sync')
