@@ -42,6 +42,8 @@ export interface OcaSyncResult {
   fallbackError: string | null;
   /** Diisi bila fallback sengaja dilewati (mis. pembatas laju), agar UI bisa menjelaskannya. */
   fallbackSkippedReason: string | null;
+  /** Status HTTP dari kegagalan get-list, dipakai menyusun pesan untuk pengguna. */
+  errorHttpStatus: number | null;
 }
 
 const DEFAULT_CRON = CronExpression.EVERY_30_MINUTES;
@@ -151,6 +153,7 @@ export class OcaTicketSchedulerService {
     let fallbackUsed = false;
     let fallbackError: string | null = null;
     let fallbackSkippedReason: string | null = null;
+    let errorHttpStatus: number | null = null;
 
     try {
       while (hasMore) {
@@ -263,6 +266,7 @@ export class OcaTicketSchedulerService {
             page++;
           }
         } catch (err: any) {
+          errorHttpStatus = err?.response?.status ?? null;
           fetchError = this.describeError(err);
           this.logger.error(
             `Failed to fetch OCA list API (page ${page}): ${fetchError}`,
@@ -351,6 +355,7 @@ export class OcaTicketSchedulerService {
         fallbackUsed,
         fallbackError,
         fallbackSkippedReason,
+        errorHttpStatus,
       });
 
       // Angka di bawah hanya menghitung jalur get-list. Kalau data masuk lewat
@@ -394,7 +399,7 @@ export class OcaTicketSchedulerService {
     if (this.lastFallbackAt > 0 && sinceLast < minInterval) {
       const lewat = Math.floor(sinceLast / 60000);
       const tunggu = Math.ceil((minInterval - sinceLast) / 60000);
-      const reason = `baru dijalankan ${lewat} menit lalu, tunggu ${tunggu} menit lagi`;
+      const reason = `data baru ditarik ${lewat} menit lalu, tunggu ${tunggu} menit lagi`;
       this.logger.log(`Fallback report dilewati: ${reason}.`);
       return { allowed: false, reason };
     }
@@ -489,6 +494,7 @@ export class OcaTicketSchedulerService {
       fallbackUsed: partial.fallbackUsed ?? false,
       fallbackError: partial.fallbackError ?? null,
       fallbackSkippedReason: partial.fallbackSkippedReason ?? null,
+      errorHttpStatus: partial.errorHttpStatus ?? null,
     };
 
     // Run yang dilewati tidak boleh menimpa hasil diagnosa run sebelumnya.

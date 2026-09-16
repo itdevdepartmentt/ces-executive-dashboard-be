@@ -45,8 +45,8 @@ export class ScheduleController {
     if (run.status === 'never-run') {
       return {
         status: 'failed',
-        error:
-          'Tidak ada hasil sync yang tercatat. Backend kemungkinan restart saat sync berjalan.',
+        error: 'Belum ada sync yang tercatat. Silakan coba jalankan sync lagi.',
+        detail: 'lastRun kosong — proses kemungkinan baru restart.',
       };
     }
 
@@ -69,20 +69,57 @@ export class ScheduleController {
       return {
         status: 'failed',
         error:
-          `Sync selesai sebagian: ${run.ticketsSaved} tiket tersimpan, ` +
-          `${run.ticketsFailed} tiket gagal, ${run.chunksFailed} batch gagal.` +
-          (run.error ? ` ${run.error}` : ''),
+          `Sebagian data gagal disimpan: ${run.ticketsSaved} tiket masuk, ` +
+          `${run.ticketsFailed} tiket gagal. Hubungi tim IT bila berulang.`,
+        detail:
+          `chunkGagal=${run.chunksFailed}` + (run.error ? ` | ${run.error}` : ''),
       };
     }
 
-    const pesan = [run.error ?? 'Sync gagal tanpa detail.'];
+    // Pesan untuk pengguna dipisahkan dari detail teknis: toast di dashboard
+    // menampilkan `error`, sedangkan `detail` hanya untuk penelusuran (dan
+    // tetap utuh di GET /schedule/sync-status).
+    const detail = [run.error ?? 'tidak ada detail'];
     if (run.fallbackSkippedReason) {
-      pesan.push(`Fallback report dilewati: ${run.fallbackSkippedReason}.`);
+      detail.push(`fallback dilewati: ${run.fallbackSkippedReason}`);
     }
     if (run.fallbackError) {
-      pesan.push(`Fallback report gagal: ${run.fallbackError}.`);
+      detail.push(`fallback gagal: ${run.fallbackError}`);
     }
-    return { status: 'failed', error: pesan.join(' ') };
+
+    return {
+      status: 'failed',
+      error: this.pesanUntukPengguna(run),
+      detail: detail.join(' | '),
+    };
+  }
+
+  /** Terjemahan kondisi gagal ke bahasa yang bisa dimengerti pengguna dashboard. */
+  private pesanUntukPengguna(run: {
+    fallbackSkippedReason: string | null;
+    fallbackError: string | null;
+    errorHttpStatus: number | null;
+  }): string {
+    // Bukan benar-benar gagal: data memang baru ditarik, jadi penarikan ulang
+    // sengaja ditahan sebentar.
+    if (run.fallbackSkippedReason) {
+      return `Belum ada penarikan baru — ${run.fallbackSkippedReason}.`;
+    }
+
+    const status = run.errorHttpStatus;
+
+    if (status === 401 || status === 403) {
+      return 'Akses ke sistem OCA Telkom ditolak. Hubungi tim IT untuk memeriksa kredensial.';
+    }
+
+    if (status === null || status >= 500) {
+      return (
+        'Sistem OCA Telkom sedang tidak dapat dihubungi. ' +
+        'Data yang sudah ada tetap aman, dan sync akan dicoba lagi otomatis.'
+      );
+    }
+
+    return 'Sync gagal. Hubungi tim IT bila terus berulang.';
   }
 
   @Post('trigger-oca-sync')
