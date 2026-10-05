@@ -190,6 +190,10 @@ export class MassProcessService {
     if (newAgent === (ticket.agent ?? '')) return ticket;
 
     const now = new Date();
+    // Penugasan pertama (dari kosong) bukan "perubahan agent" — kalau ikut
+    // dihitung, laporan rotasi agent akan selalu melebih-lebihkan satu.
+    const isReassignment = Boolean((ticket.agent ?? '').trim());
+
     await this.prisma.$transaction([
       this.prisma.massTicket.update({
         where: { ticketNumber },
@@ -197,7 +201,7 @@ export class MassProcessService {
           agent: newAgent,
           teamLeader: dto.newTeamLeader ?? ticket.teamLeader,
           agentAssignedAt: now,
-          agentChangeCount: { increment: 1 },
+          ...(isReassignment ? { agentChangeCount: { increment: 1 } } : {}),
         },
       }),
       this.prisma.massAssignmentHistory.create({
