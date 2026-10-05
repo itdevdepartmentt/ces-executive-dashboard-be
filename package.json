@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:admin": "ts-node seed-admin.ts",
     "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "seed:test-users": "ts-node seed-test-users.ts"
   },
   "dependencies": {
     "@keyv/redis": "^5.1.6",
