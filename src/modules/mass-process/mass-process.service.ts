@@ -38,17 +38,27 @@ export class MassProcessService {
         continue;
       }
 
-      const base = {
-        ticketSubject: row.ticketSubject?.trim() || null,
-        lastStatus: row.lastStatus?.trim() || null,
-        ticketCreated: this.parseDate(row.ticketCreated),
-        jumlahMsisdn: this.parseInt(row.jumlahMsisdn),
-        detailCategory: row.detailCategory?.trim() || null,
-        subCategory: row.subCategory?.trim() || null,
-        category: row.category?.trim() || null,
-        namaPerusahaan: row.namaPerusahaan?.trim() || null,
-        projectId: row.projectId?.trim() || null,
+      // Hanya kolom yang benar-benar ada di baris yang ditulis. Kalau seluruh
+      // field dipetakan tanpa syarat, file Excel yang kekurangan satu kolom
+      // akan menghapus data yang sudah tersimpan.
+      const base: Prisma.MassTicketUpdateInput = {};
+      const put = (key: keyof Prisma.MassTicketUpdateInput, value: unknown) => {
+        if (value !== undefined) (base as Record<string, unknown>)[key] = value;
       };
+
+      put('ticketSubject', this.optionalText(row.ticketSubject));
+      put('lastStatus', this.optionalText(row.lastStatus));
+      put('detailCategory', this.optionalText(row.detailCategory));
+      put('subCategory', this.optionalText(row.subCategory));
+      put('category', this.optionalText(row.category));
+      put('namaPerusahaan', this.optionalText(row.namaPerusahaan));
+      put('projectId', this.optionalText(row.projectId));
+      if (row.ticketCreated !== undefined) {
+        put('ticketCreated', this.parseDate(row.ticketCreated));
+      }
+      if (row.jumlahMsisdn !== undefined) {
+        put('jumlahMsisdn', this.parseInt(row.jumlahMsisdn));
+      }
 
       const existing = await this.prisma.massTicket.findUnique({
         where: { ticketNumber },
@@ -62,10 +72,11 @@ export class MassProcessService {
           where: { ticketNumber },
           data: keepStatus ? { ...base, lastStatus: existing.lastStatus } : base,
         });
+
         summary.updated++;
       } else {
         await this.prisma.massTicket.create({
-          data: { ticketNumber, ...base },
+          data: { ...(base as Prisma.MassTicketCreateInput), ticketNumber },
         });
         summary.created++;
       }
@@ -473,6 +484,12 @@ export class MassProcessService {
         actionBy: actor ?? after.agent ?? null,
       })),
     });
+  }
+
+  /** undefined berarti "kolom tidak ada di baris", bukan "kosongkan nilainya". */
+  private optionalText(value?: string | null): string | null | undefined {
+    if (value === undefined) return undefined;
+    return value?.trim() || null;
   }
 
   private parseDate(value?: string | null): Date | null {
