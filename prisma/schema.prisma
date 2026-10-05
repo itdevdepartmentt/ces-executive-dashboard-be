@@ -627,3 +627,233 @@ enum UserRole {
   TL
   TL_QC
 }
+
+// ============================================================================
+// MESIN FORM DINAMIS
+// Definisi field disimpan sebagai data, bukan di kode, sehingga admin bisa
+// menambah/mengubah/menghapus field lewat UI tanpa migrasi database.
+// ============================================================================
+
+enum FormFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  DATETIME
+  SELECT
+  MULTISELECT
+  BOOLEAN
+  FILE
+  TABLE
+}
+
+model FormDefinition {
+  id          String        @id @default(uuid())
+  key         String        @unique
+  name        String
+  description String?
+  isActive    Boolean       @default(true) @map("is_active")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  fields      FormField[]
+  records     FormRecord[]
+  sections    FormSection[]
+}
+
+model FormSection {
+  id        String         @id @default(uuid())
+  formId    String         @map("form_id")
+  key       String
+  label     String
+  order     Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  fields    FormField[]
+  form      FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, key])
+  @@index([formId, order])
+}
+
+model FormField {
+  id           String         @id @default(uuid())
+  formId       String         @map("form_id")
+  sectionId    String?        @map("section_id")
+  key          String
+  label        String
+  helpText     String?        @map("help_text")
+  type         FormFieldType  @default(TEXT)
+  required     Boolean        @default(false)
+  order        Int            @default(0)
+  /// SELECT/MULTISELECT: [{ value, label }]
+  options      Json?
+  /// Aturan tambahan: { min, max, pattern, maxLength }
+  validation   Json?
+  /// TABLE: definisi kolom anak, mis. daftar MSISDN
+  columns      Json?
+  defaultValue String?        @map("default_value")
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  form         FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+  section      FormSection?   @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, key])
+  @@index([formId, order])
+}
+
+model FormRecord {
+  id        String         @id @default(uuid())
+  formId    String         @map("form_id")
+  /// Nilai per field: { fieldKey: value }
+  values    Json
+  status    String         @default("submitted")
+  /// Nomor rujukan (mis. ID tiket) agar bisa dicari tanpa menelusuri JSON
+  refNumber String?        @map("ref_number")
+  createdBy String?        @map("created_by")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  form      FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, createdAt])
+  @@index([refNumber])
+}
+
+// ============================================================================
+// MASS PROCESS — alur kerja tiket massal
+// Kolom alur kerja dibuat eksplisit agar bisa difilter dan diagregasi dengan
+// cepat; atribut tambahan yang diatur admin disimpan di customValues.
+// ============================================================================
+
+model MassTicket {
+  id             String    @id @default(uuid())
+  ticketNumber   String    @unique @map("ticket_number")
+  ticketSubject  String?   @map("ticket_subject")
+  lastStatus     String?   @map("last_status")
+  ticketCreated  DateTime? @map("ticket_created")
+  jumlahMsisdn   Int?      @map("jumlah_msisdn")
+  detailCategory String?   @map("detail_category")
+  subCategory    String?   @map("sub_category")
+  category       String?
+  namaPerusahaan String?   @map("nama_perusahaan")
+  projectId      String?   @map("project_id")
+
+  agent                 String?   @default("")
+  teamLeader            String?   @default("") @map("team_leader")
+  agentAssignedAt       DateTime? @map("agent_assigned_at")
+  agentChangeCount      Int       @default(0) @map("agent_change_count")
+  waktuPengerjaanKhusus String?   @map("waktu_pengerjaan_khusus")
+
+  validationPicStatus   String? @map("validation_pic_status")
+  validationPicNotes    String? @map("validation_pic_notes")
+  validationPksStatus   String? @map("validation_pks_status")
+  validationPksNotes    String? @map("validation_pks_notes")
+  validationNodinStatus String? @map("validation_nodin_status")
+  validationNodinNotes  String? @map("validation_nodin_notes")
+  validationStatus      String? @map("validation_status")
+
+  profilingStatus  String? @map("profiling_status")
+  profilingOrderId String? @map("profiling_order_id")
+  profilingNotes   String? @map("profiling_notes")
+
+  /// Langkah proses kustom: [{ name, status, notes, orderId }]
+  processSteps  Json? @map("process_steps")
+  /// Konfirmasi yang jadi sumber deteksi bottleneck: { key: { status, notes } }
+  confirmations Json?
+  /// Nilai field dinamis milik form 'mass-ticket'
+  customValues  Json? @map("custom_values")
+
+  currentProcess  String?   @map("current_process")
+  overallStatus   String?   @map("overall_status")
+  processProgress Int       @default(0) @map("process_progress")
+  daysOpen        Int       @default(0) @map("days_open")
+  ageingBucket    String?   @map("ageing_bucket")
+  bottleneck      String?
+  bottleneckSince DateTime? @map("bottleneck_since")
+  lastAction      String?   @map("last_action")
+  lastActionBy    String?   @map("last_action_by")
+  completionDate  DateTime? @map("completion_date")
+
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  assignmentLogs  MassAssignmentHistory[]
+  dailyActivities MassDailyActivity[]
+  histories       MassTicketHistory[]
+
+  @@index([overallStatus])
+  @@index([agent])
+  @@index([ticketCreated])
+  @@index([ageingBucket])
+  @@index([namaPerusahaan])
+}
+
+/// Menggantikan sheet Config: daftar langkah proses yang bisa diatur admin.
+model MassProcessStep {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  order     Int      @default(0)
+  isDefault Boolean  @default(false) @map("is_default")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MassTicketHistory {
+  id             String     @id @default(uuid())
+  ticketId       String     @map("ticket_id")
+  ticketNumber   String     @map("ticket_number")
+  agent          String?
+  teamLeader     String?    @map("team_leader")
+  process        String?
+  previousStatus String?    @map("previous_status")
+  newStatus      String?    @map("new_status")
+  coordination   String?
+  reason         String?
+  notes          String?
+  orderId        String?    @map("order_id")
+  bottleneck     String?
+  actionBy       String?    @map("action_by")
+  createdAt      DateTime   @default(now())
+  ticket         MassTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([ticketNumber])
+}
+
+model MassAssignmentHistory {
+  id                 String     @id @default(uuid())
+  ticketId           String     @map("ticket_id")
+  ticketNumber       String     @map("ticket_number")
+  previousAgent      String?    @map("previous_agent")
+  newAgent           String?    @map("new_agent")
+  previousTeamLeader String?    @map("previous_team_leader")
+  newTeamLeader      String?    @map("new_team_leader")
+  changedBy          String?    @map("changed_by")
+  reason             String?
+  notes              String?
+  createdAt          DateTime   @default(now())
+  ticket             MassTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([ticketNumber])
+}
+
+/// Menggantikan sheet aktivitas harian yang dulu dibuat satu per tanggal.
+model MassDailyActivity {
+  id           String     @id @default(uuid())
+  activityDate DateTime   @map("activity_date") @db.Date
+  ticketId     String     @map("ticket_id")
+  ticketNumber String     @map("ticket_number")
+  agent        String     @default("")
+  assignedAt   DateTime?  @map("assigned_at")
+  workedAt     DateTime?  @map("worked_at")
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  ticket       MassTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([activityDate, ticketId, agent])
+  @@index([activityDate])
+}

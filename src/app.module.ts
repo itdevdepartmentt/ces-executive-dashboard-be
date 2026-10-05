@@ -28,6 +28,8 @@ import { createKeyv } from '@keyv/redis';
 import { QaReconciliationModule } from './modules/qa-reconciliation/qa-reconciliation.module';
 import { QaProductivityModule } from './modules/qa-productivity/qa-productivity.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { FormsModule } from './modules/forms/forms.module';
+import { MassProcessModule } from './modules/mass-process/mass-process.module';
 
 @Module({
   imports: [
@@ -112,6 +114,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     QaReconciliationModule,
     QaProductivityModule,
     NotificationsModule,
+    FormsModule,
+    MassProcessModule,
   ],
   controllers: [AppController],
   providers: [AppService],
