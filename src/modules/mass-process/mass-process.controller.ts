@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,8 +9,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UserRole } from '@prisma/client';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guard/jwt-auth.guard';
@@ -23,6 +28,7 @@ import {
   UpdateProcessStepDto,
   UploadTicketsDto,
 } from './dto/mass-process.dto';
+import { MassExcelService } from './mass-excel.service';
 import { MassProcessService } from './mass-process.service';
 
 const READERS = [
@@ -38,7 +44,10 @@ const WRITERS = [UserRole.ADMIN, UserRole.QC, UserRole.TL_QC, UserRole.TL] as co
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('mass-process')
 export class MassProcessController {
-  constructor(private readonly service: MassProcessService) {}
+  constructor(
+    private readonly service: MassProcessService,
+    private readonly excel: MassExcelService,
+  ) {}
 
   // -------------------------------------------------------------- dashboard
 
@@ -86,6 +95,39 @@ export class MassProcessController {
   @Roles(...WRITERS)
   upload(@Body() dto: UploadTicketsDto) {
     return this.service.uploadTickets(dto);
+  }
+
+  /**
+   * Upload berkas .xlsx langsung. Berkas ditahan di memori, tidak ditulis ke
+   * disk — isinya hanya dibaca sekali lalu dibuang.
+   */
+  @Post('upload-excel')
+  @Roles(...WRITERS)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  async uploadExcel(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Berkas belum dipilih.');
+
+    const parsed = await this.excel.parse(file.buffer);
+    if (parsed.rows.length === 0) {
+      throw new BadRequestException(
+        'Tidak ada baris yang bisa dipakai dari berkas ini.',
+      );
+    }
+
+    const result = await this.service.uploadTickets({ rows: parsed.rows });
+
+    return {
+      ...result,
+      fileName: file.originalname,
+      totalRows: parsed.totalRows,
+      unmappedColumns: parsed.unmappedColumns,
+      skippedRows: parsed.skipped,
+    };
   }
 
   @Post('recalculate')
