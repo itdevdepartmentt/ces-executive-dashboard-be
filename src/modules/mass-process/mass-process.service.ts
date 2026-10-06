@@ -1,13 +1,20 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { MassTicket, Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import {
   CreateProcessStepDto,
+  CreateStaffDto,
   MarkWorkedDto,
   QueryTicketsDto,
   SaveRecapDto,
   UpdateAgentDto,
   UpdateProcessStepDto,
+  UpdateStaffDto,
   UploadTicketsDto,
 } from './dto/mass-process.dto';
 import { MassWorkflowService } from './mass-workflow.service';
@@ -251,6 +258,8 @@ export class MassProcessService {
         ageingBucket: result.ageingBucket,
         bottleneck: result.bottleneck,
         bottleneckSince: result.bottleneckSince,
+        idKoordinasiSummary: result.idKoordinasiSummary,
+        todoSummary: result.todoSummary,
         lastAction: result.lastAction,
         lastActionBy: result.lastActionBy,
         ...(result.lastStatus ? { lastStatus: result.lastStatus } : {}),
@@ -331,9 +340,20 @@ export class MassProcessService {
 
   // --------------------------------------------------------------- dashboard
 
+  /** Status dari OCA bervariasi penulisannya, jadi dikelompokkan lewat pola. */
+  private readonly CLOSED_PATTERN =
+    /closed|close|resolved|resolve|solved|completed|complete|cancelled|canceled/i;
+
   async getDashboard() {
-    const [total, byStatus, byAgeing, byBottleneck, byProcess, completedToday] =
-      await Promise.all([
+    const [
+      total,
+      byStatus,
+      byAgeing,
+      byBottleneck,
+      byProcess,
+      completedToday,
+      byLastStatus,
+    ] = await Promise.all([
         this.prisma.massTicket.count(),
         this.prisma.massTicket.groupBy({
           by: ['overallStatus'],
@@ -355,14 +375,32 @@ export class MassProcessService {
         this.prisma.massTicket.count({
           where: { completionDate: { gte: this.dateOnly(new Date()) } },
         }),
+        this.prisma.massTicket.groupBy({
+          by: ['lastStatus'],
+          _count: { _all: true },
+        }),
       ]);
 
     const count = (rows: { _count: { _all: number } }[]) =>
       rows.reduce((sum, r) => sum + r._count._all, 0);
 
+    // Open vs closed dinilai dari teks status OCA, bukan dari status internal,
+    // supaya angkanya bisa dibandingkan langsung dengan laporan dari OCA.
+    let open = 0;
+    let closed = 0;
+    const statuses = byLastStatus.map((r) => {
+      const label = (r.lastStatus ?? '').trim() || 'Blank / Tidak Terisi';
+      const jumlah = r._count._all;
+      if (this.CLOSED_PATTERN.test(label)) closed += jumlah;
+      else open += jumlah;
+      return { label, count: jumlah };
+    });
+    statuses.sort((a, b) => b.count - a.count);
+
     return {
       total,
       completedToday,
+      lastStatusSummary: { total, open, closed, statuses },
       inProgress: count(byStatus.filter((r) => r.overallStatus === 'In Progress')),
       completed: count(byStatus.filter((r) => r.overallStatus === 'Completed')),
       byStatus: byStatus.map((r) => ({
@@ -426,6 +464,62 @@ export class MassProcessService {
     }
     await this.prisma.massProcessStep.delete({ where: { id } });
     return { deleted: true, deactivated: false };
+  }
+
+  // -------------------------------------------------------------- daftar staf
+
+  listStaff(role?: 'AGENT' | 'TEAM_LEADER', includeInactive = false) {
+    return this.prisma.massStaff.findMany({
+      where: {
+        ...(role ? { role } : {}),
+        ...(includeInactive ? {} : { isActive: true }),
+      },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createStaff(dto: CreateStaffDto) {
+    const name = dto.name.trim();
+    const existing = await this.prisma.massStaff.findUnique({
+      where: { name_role: { name, role: dto.role } },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `"${name}" sudah terdaftar sebagai ${dto.role === 'AGENT' ? 'agent' : 'team leader'}.`,
+      );
+    }
+    return this.prisma.massStaff.create({ data: { name, role: dto.role } });
+  }
+
+  async updateStaff(id: string, dto: UpdateStaffDto) {
+    await this.requireStaff(id);
+    return this.prisma.massStaff.update({
+      where: { id },
+      data: { ...(dto.name ? { name: dto.name.trim() } : {}), ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) },
+    });
+  }
+
+  /**
+   * Dinonaktifkan, bukan dihapus: namanya masih tersimpan di tiket lama dan
+   * riwayat penugasan, dan harus tetap terbaca di sana.
+   */
+  async deleteStaff(id: string) {
+    const staff = await this.requireStaff(id);
+    await this.prisma.massStaff.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    return {
+      deleted: false,
+      deactivated: true,
+      message: `"${staff.name}" dinonaktifkan. Tiket lama yang memakainya tidak berubah.`,
+    };
+  }
+
+  private async requireStaff(id: string) {
+    const staff = await this.prisma.massStaff.findUnique({ where: { id } });
+    if (!staff) throw new NotFoundException('Nama tidak ditemukan di daftar staf');
+    return staff;
   }
 
   // ----------------------------------------------------------------- helpers

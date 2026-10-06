@@ -51,6 +51,13 @@ export class FormRecordsController {
     return this.records.list(key, query);
   }
 
+  /** Riwayat pengajuan sebuah perusahaan, dipakai sebelum membuat permintaan baru. */
+  @Get(':key/records/by-corporate')
+  @Roles(...ALL_ROLES)
+  searchByCorporate(@Param('key') key: string, @Query('name') name = '') {
+    return this.records.searchByCorporate(key, name);
+  }
+
   @Get(':key/records/summary')
   @Roles(...ALL_ROLES)
   summary(@Param('key') key: string) {

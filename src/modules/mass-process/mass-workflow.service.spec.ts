@@ -225,6 +225,70 @@ describe('MassWorkflowService', () => {
     });
   });
 
+  describe('ringkasan koordinasi dan to-do', () => {
+    it('mengumpulkan order ID profiling dan status konfirmasi', () => {
+      const r = service.calculate(
+        ticket({
+          profilingOrderId: 'ORD-123',
+          profilingStatus: 'In Progress',
+          confirmations: {
+            profilingBillcoApproval: { status: 'In Progress' },
+            validationAmCoordination: { status: 'Done' },
+          } as never,
+        }),
+        NOW,
+      );
+
+      expect(r.idKoordinasiSummary).toContain('Profiling Preparation: ORD-123');
+      expect(r.idKoordinasiSummary).toContain('AM Coordination (Validation): Done');
+      expect(r.idKoordinasiSummary).toContain(
+        'Billco Approval (Profiling): In Progress',
+      );
+    });
+
+    it('hanya memasukkan langkah yang punya order ID atau bernama koordinasi', () => {
+      const r = service.calculate(
+        ticket({
+          processSteps: [
+            { name: 'Set CLS Rp 1', status: 'Done' },
+            { name: 'Koordinasi IT', status: 'In Progress' },
+            { name: 'Add Offer/Fitur', status: 'Done', orderId: 'ORD-777' },
+          ] as never,
+        }),
+        NOW,
+      );
+
+      expect(r.idKoordinasiSummary).not.toContain('Set CLS Rp 1');
+      expect(r.idKoordinasiSummary).toContain('Koordinasi IT: In Progress');
+      expect(r.idKoordinasiSummary).toContain('Add Offer/Fitur: ORD-777');
+    });
+
+    it('menomori to-do berurutan beserta statusnya', () => {
+      const r = service.calculate(
+        ticket({
+          profilingStatus: 'Done',
+          profilingOrderId: 'ORD-1',
+          processSteps: [
+            { name: 'Set CLS Rp 1', status: 'Done' },
+            { name: 'Change Ownership', status: '', orderId: 'ORD-2' },
+          ] as never,
+        }),
+        NOW,
+      );
+
+      const baris = r.todoSummary.split(String.fromCharCode(10));
+      expect(baris[0]).toBe('1. Profiling Preparation (Done) [ORD-1]');
+      expect(baris[1]).toBe('2. Set CLS Rp 1 (Done)');
+      expect(baris[2]).toBe('3. Change Ownership (Not Started) [ORD-2]');
+    });
+
+    it('tiket yang belum disentuh menghasilkan ringkasan kosong', () => {
+      const r = service.calculate(ticket(), NOW);
+      expect(r.idKoordinasiSummary).toBe('');
+      expect(r.todoSummary).toBe('');
+    });
+  });
+
   describe('parsing JSON yang longgar', () => {
     it('menerima processSteps berbentuk string', () => {
       const steps = service.readSteps('[{"name":"A","status":"Done"}]');

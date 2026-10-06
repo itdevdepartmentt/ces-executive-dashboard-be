@@ -763,16 +763,21 @@ model MassTicket {
   /// Nilai field dinamis milik form 'mass-ticket'
   customValues  Json? @map("custom_values")
 
-  currentProcess  String?   @map("current_process")
-  overallStatus   String?   @map("overall_status")
-  processProgress Int       @default(0) @map("process_progress")
-  daysOpen        Int       @default(0) @map("days_open")
-  ageingBucket    String?   @map("ageing_bucket")
-  bottleneck      String?
-  bottleneckSince DateTime? @map("bottleneck_since")
-  lastAction      String?   @map("last_action")
-  lastActionBy    String?   @map("last_action_by")
-  completionDate  DateTime? @map("completion_date")
+  currentProcess      String?   @map("current_process")
+  overallStatus       String?   @map("overall_status")
+  processProgress     Int       @default(0) @map("process_progress")
+  daysOpen            Int       @default(0) @map("days_open")
+  ageingBucket        String?   @map("ageing_bucket")
+  bottleneck          String?
+  bottleneckSince     DateTime? @map("bottleneck_since")
+  /// Rangkuman order ID profiling dan koordinasi, dihitung ulang tiap simpan.
+  idKoordinasiSummary String?   @map("id_koordinasi_summary")
+  /// Daftar langkah bernomor beserta statusnya, untuk dibaca sekilas.
+  todoSummary         String?   @map("todo_summary")
+
+  lastAction     String?   @map("last_action")
+  lastActionBy   String?   @map("last_action_by")
+  completionDate DateTime? @map("completion_date")
 
   uploadedAt DateTime @default(now()) @map("uploaded_at")
   createdAt  DateTime @default(now())
@@ -856,4 +861,24 @@ model MassDailyActivity {
 
   @@unique([activityDate, ticketId, agent])
   @@index([activityDate])
+}
+
+enum MassStaffRole {
+  AGENT
+  TEAM_LEADER
+}
+
+/// Menggantikan daftar Agent dan Team Leader di sheet Config. Dibuat sebagai
+/// master data supaya penulisan nama konsisten — input bebas membuat "Budi"
+/// dan "budi" terhitung dua orang berbeda saat diagregasi.
+model MassStaff {
+  id        String        @id @default(uuid())
+  name      String
+  role      MassStaffRole
+  isActive  Boolean       @default(true) @map("is_active")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([name, role])
+  @@index([role, isActive])
 }

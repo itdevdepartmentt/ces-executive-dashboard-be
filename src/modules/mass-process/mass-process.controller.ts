@@ -21,11 +21,13 @@ import { JwtAuthGuard } from 'src/common/guard/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import {
   CreateProcessStepDto,
+  CreateStaffDto,
   MarkWorkedDto,
   QueryTicketsDto,
   SaveRecapDto,
   UpdateAgentDto,
   UpdateProcessStepDto,
+  UpdateStaffDto,
   UploadTicketsDto,
 } from './dto/mass-process.dto';
 import { MassExcelService } from './mass-excel.service';
@@ -87,6 +89,35 @@ export class MassProcessController {
   @Roles(UserRole.ADMIN, UserRole.TL_QC)
   deleteStep(@Param('id') id: string) {
     return this.service.deleteProcessStep(id);
+  }
+
+  // -------------------------------------------------------------- daftar staf
+
+  @Get('staff')
+  @Roles(...READERS)
+  listStaff(
+    @Query('role') role?: 'AGENT' | 'TEAM_LEADER',
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.service.listStaff(role, includeInactive === 'true');
+  }
+
+  @Post('staff')
+  @Roles(UserRole.ADMIN, UserRole.TL_QC)
+  createStaff(@Body() dto: CreateStaffDto) {
+    return this.service.createStaff(dto);
+  }
+
+  @Patch('staff/:id')
+  @Roles(UserRole.ADMIN, UserRole.TL_QC)
+  updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
+    return this.service.updateStaff(id, dto);
+  }
+
+  @Delete('staff/:id')
+  @Roles(UserRole.ADMIN, UserRole.TL_QC)
+  deleteStaff(@Param('id') id: string) {
+    return this.service.deleteStaff(id);
   }
 
   // ------------------------------------------------------------------ tiket

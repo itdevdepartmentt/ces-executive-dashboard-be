@@ -109,6 +109,42 @@ export class FormRecordsService {
     return { deleted: true };
   }
 
+  /**
+   * Mencari riwayat pengajuan berdasarkan nama perusahaan, menggantikan
+   * searchPSBCorporateTickets milik Apps Script.
+   *
+   * Memakai query mentah karena filter JSON Prisma tidak punya mode abai
+   * huruf besar-kecil, padahal nama perusahaan diketik bebas oleh pengguna.
+   */
+  async searchByCorporate(formKey: string, keyword: string) {
+    const term = keyword.trim();
+    if (!term) return [];
+
+    const form = await this.formsService.getForm(formKey, true);
+
+    return this.prisma.$queryRaw<
+      {
+        id: string;
+        refNumber: string | null;
+        corporateName: string | null;
+        projectId: string | null;
+        createdAt: Date;
+      }[]
+    >`
+      SELECT
+        id,
+        "ref_number"            AS "refNumber",
+        values->>'corporateName' AS "corporateName",
+        values->>'projectId'     AS "projectId",
+        "createdAt"
+      FROM "FormRecord"
+      WHERE "form_id" = ${form.id}
+        AND values->>'corporateName' ILIKE ${'%' + term + '%'}
+      ORDER BY "createdAt" DESC
+      LIMIT 100;
+    `;
+  }
+
   /** Rekap ringkas: jumlah record per status dan per hari. */
   async summary(formKey: string) {
     const form = await this.formsService.getForm(formKey, true);

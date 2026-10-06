@@ -44,6 +44,7 @@ export class FormExportService {
     this.styleHeader(sheet.getRow(1));
 
     const tableFields: FormField[] = [];
+    const evidenceFields: FormField[] = [];
     const bySection = this.groupBySection(fields, sections);
 
     for (const group of bySection) {
@@ -68,6 +69,21 @@ export class FormExportService {
           ]);
           continue;
         }
+
+        if (field.type === 'FILE') {
+          const berkas = Array.isArray(values[field.key])
+            ? (values[field.key] as unknown[])
+            : [];
+          evidenceFields.push(field);
+          sheet.addRow([
+            field.label,
+            field.helpText ?? '',
+            berkas.length
+              ? `${berkas.length} lampiran — lihat sheet "${this.sheetName(field.label)}"`
+              : 'Tidak ada lampiran',
+          ]);
+          continue;
+        }
         sheet.addRow([
           field.label,
           field.helpText ?? '',
@@ -82,6 +98,10 @@ export class FormExportService {
 
     for (const field of tableFields) {
       this.addTableSheet(workbook, field, values[field.key]);
+    }
+
+    for (const field of evidenceFields) {
+      this.addEvidenceSheet(workbook, field, values[field.key]);
     }
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
@@ -113,6 +133,77 @@ export class FormExportService {
     for (const row of rows) {
       sheet.addRow(columns.map((col) => this.stringify(row[col.key])));
     }
+  }
+
+  /**
+   * Satu sheet per field lampiran, gambarnya ditanam langsung — menggantikan
+   * createSeparateEvidenceSheets_ pada Apps Script.
+   *
+   * Lampiran disimpan sebagai data URL. Yang bukan gambar (mis. PDF) tidak
+   * bisa ditanam ke dalam sel, jadi dicatat sebagai baris keterangan agar
+   * keberadaannya tetap terlihat.
+   */
+  private addEvidenceSheet(
+    workbook: ExcelJS.Workbook,
+    field: FormField,
+    raw: unknown,
+  ) {
+    const berkas = Array.isArray(raw) ? raw.map(String) : [];
+    if (!berkas.length) return;
+
+    const sheet = workbook.addWorksheet(this.sheetName(field.label));
+    sheet.columns = [{ header: field.label, key: 'info', width: 70 }];
+    this.styleHeader(sheet.getRow(1));
+
+    let barisBerikutnya = 2;
+
+    berkas.forEach((berkasSatu, index) => {
+      const parsed = this.parseDataUrl(berkasSatu);
+      const labelRow = sheet.getRow(barisBerikutnya);
+      labelRow.getCell(1).value = `Lampiran ${index + 1}`;
+      labelRow.font = { bold: true };
+      barisBerikutnya++;
+
+      if (!parsed || !parsed.isImage) {
+        sheet.getRow(barisBerikutnya).getCell(1).value = parsed
+          ? `(${parsed.mime} — tidak bisa ditampilkan di Excel)`
+          : '(format lampiran tidak dikenali)';
+        barisBerikutnya += 2;
+        return;
+      }
+
+      const imageId = workbook.addImage({
+        base64: parsed.base64,
+        extension: parsed.extension as 'png' | 'jpeg' | 'gif',
+      });
+      sheet.addImage(imageId, {
+        tl: { col: 0, row: barisBerikutnya - 1 },
+        ext: { width: 460, height: 300 },
+      });
+
+      // Sisakan ruang vertikal supaya gambar berikutnya tidak bertumpuk.
+      barisBerikutnya += 16;
+    });
+  }
+
+  /** data:image/png;base64,XXXX -> { mime, extension, base64, isImage } */
+  private parseDataUrl(value: string): {
+    mime: string;
+    extension: string;
+    base64: string;
+    isImage: boolean;
+  } | null {
+    const match = /^data:([^;,]+);base64,(.*)$/s.exec(value);
+    if (!match) return null;
+
+    const mime = match[1];
+    const base64 = match[2];
+    const subtype = mime.split('/')[1] ?? '';
+    const extension = subtype === 'jpg' ? 'jpeg' : subtype;
+    const isImage =
+      mime.startsWith('image/') && ['png', 'jpeg', 'gif'].includes(extension);
+
+    return { mime, extension, base64, isImage };
   }
 
   private groupBySection(

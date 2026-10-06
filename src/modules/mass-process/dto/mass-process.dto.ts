@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -110,5 +111,19 @@ export class CreateProcessStepDto {
 export class UpdateProcessStepDto {
   @IsOptional() @IsString() @IsNotEmpty() name?: string;
   @IsOptional() @IsInt() order?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class CreateStaffDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsIn(['AGENT', 'TEAM_LEADER'])
+  role: 'AGENT' | 'TEAM_LEADER';
+}
+
+export class UpdateStaffDto {
+  @IsOptional() @IsString() @IsNotEmpty() name?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

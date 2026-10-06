@@ -9,6 +9,10 @@ import {
   ageingBucket,
 } from './mass-process.constants';
 
+/** Pemisah baris untuk ringkasan multi-baris. */
+const NEWLINE = String.fromCharCode(10);
+
+
 export interface ProcessStep {
   name: string;
   status?: string;
@@ -34,6 +38,10 @@ export interface WorkflowResult {
   lastActionBy: string;
   lastStatus?: string;
   completionDate?: Date;
+  /** Rangkuman order ID profiling dan koordinasi. */
+  idKoordinasiSummary: string;
+  /** Daftar langkah bernomor beserta statusnya. */
+  todoSummary: string;
 }
 
 /**
@@ -117,7 +125,11 @@ export class MassWorkflowService {
 
     const bottleneck = this.detectBottleneck(validationNok, confirmations);
 
+    const summaries = this.buildSummaries(ticket, steps, confirmations);
+
     const result: WorkflowResult = {
+      idKoordinasiSummary: summaries.ids,
+      todoSummary: summaries.todo,
       validationStatus: validationNok ? STATUS_NOK : validationComplete ? STATUS_OK : null,
       currentProcess,
       overallStatus,
@@ -138,6 +150,69 @@ export class MassWorkflowService {
     }
 
     return result;
+  }
+
+  /**
+   * Dua ringkasan teks yang dulu dihitung buildActionSummary_ di Apps Script.
+   *
+   * idKoordinasiSummary mengumpulkan order ID dan status koordinasi agar bisa
+   * dibaca sekilas tanpa membuka tiap bagian. todoSummary menomori langkah
+   * yang harus dikerjakan beserta statusnya.
+   */
+  private buildSummaries(
+    ticket: MassTicket,
+    steps: ProcessStep[],
+    confirmations: Record<string, Confirmation>,
+  ): { ids: string; todo: string } {
+    const ids: string[] = [];
+    const profilingOrder = (ticket.profilingOrderId ?? '').trim();
+
+    if (profilingOrder) {
+      ids.push(`Profiling Preparation: ${profilingOrder}`);
+    }
+
+    for (const def of CONFIRMATION_DEFS) {
+      const status = (confirmations[def.key]?.status ?? '').trim();
+      if (status) ids.push(`${def.label} (${def.stage}): ${status}`);
+    }
+
+    for (const step of steps) {
+      const name = step.name.trim();
+      const order = (step.orderId ?? '').trim();
+      const lower = name.toLowerCase();
+      const relevan =
+        order ||
+        lower.includes('profiling') ||
+        lower.includes('koordinasi') ||
+        lower.includes('konfirmasi');
+
+      if (name && relevan) {
+        const suffix = order || (step.status ?? '').trim();
+        ids.push(suffix ? `${name}: ${suffix}` : name);
+      }
+    }
+
+    const todo: string[] = [];
+    const profilingStatus = (ticket.profilingStatus ?? '').trim();
+
+    if (profilingOrder || profilingStatus) {
+      todo.push(
+        `1. Profiling Preparation (${profilingStatus || 'Not Started'})` +
+          (profilingOrder ? ` [${profilingOrder}]` : ''),
+      );
+    }
+
+    for (const step of steps) {
+      const name = step.name.trim();
+      if (!name) continue;
+      const status = (step.status ?? '').trim() || 'Not Started';
+      const order = (step.orderId ?? '').trim();
+      todo.push(
+        `${todo.length + 1}. ${name} (${status})` + (order ? ` [${order}]` : ''),
+      );
+    }
+
+    return { ids: ids.join(NEWLINE), todo: todo.join(NEWLINE) };
   }
 
   /**
