@@ -116,11 +116,13 @@ export class FormRecordsService {
    * Memakai query mentah karena filter JSON Prisma tidak punya mode abai
    * huruf besar-kecil, padahal nama perusahaan diketik bebas oleh pengguna.
    */
-  async searchByCorporate(formKey: string, keyword: string) {
+  async searchByCorporate(formKey: string, keyword: string, sourceKey?: string) {
     const term = keyword.trim();
     if (!term) return [];
 
-    const form = await this.formsService.getForm(formKey, true);
+    // Riwayat korporat berasal dari form pendaftaran awal (PSB), bukan dari
+    // form yang sedang diisi — itu yang membuat kedua form jadi satu kesatuan.
+    const form = await this.formsService.getForm(sourceKey || formKey, true);
 
     return this.prisma.$queryRaw<
       {
