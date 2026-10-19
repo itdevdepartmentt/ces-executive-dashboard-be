@@ -1,5 +1,8 @@
 -- CreateEnum
-CREATE TYPE "FormFieldType" AS ENUM ('TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'DATETIME', 'SELECT', 'MULTISELECT', 'BOOLEAN', 'FILE', 'TABLE');
+DO $$ BEGIN
+  CREATE TYPE "FormFieldType" AS ENUM ('TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'DATETIME', 'SELECT', 'MULTISELECT', 'BOOLEAN', 'FILE', 'TABLE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterEnum
 -- This migration adds more than one value to an enum.
@@ -9,19 +12,19 @@ CREATE TYPE "FormFieldType" AS ENUM ('TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'DATE
 -- the enum.
 
 
-ALTER TYPE "UserRole" ADD VALUE 'QC';
-ALTER TYPE "UserRole" ADD VALUE 'TL';
-ALTER TYPE "UserRole" ADD VALUE 'TL_QC';
+ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'QC';
+ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'TL';
+ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'TL_QC';
 
 -- AlterTable
-ALTER TABLE "lookup_agent" ADD COLUMN     "peak1" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "peak2" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "peak3" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "tapper" TEXT,
-ADD COLUMN     "team_leader" TEXT;
+ALTER TABLE "lookup_agent" ADD COLUMN IF NOT EXISTS     "peak1" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "peak2" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "peak3" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "tapper" TEXT,
+ADD COLUMN IF NOT EXISTS     "team_leader" TEXT;
 
 -- CreateTable
-CREATE TABLE "qa_form_tapping" (
+CREATE TABLE IF NOT EXISTS "qa_form_tapping" (
     "id" TEXT NOT NULL,
     "createdDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "tapper" TEXT NOT NULL,
@@ -65,7 +68,7 @@ CREATE TABLE "qa_form_tapping" (
 );
 
 -- CreateTable
-CREATE TABLE "qa_ticket" (
+CREATE TABLE IF NOT EXISTS "qa_ticket" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "idTiket" TEXT NOT NULL,
@@ -89,7 +92,7 @@ CREATE TABLE "qa_ticket" (
 );
 
 -- CreateTable
-CREATE TABLE "qa_reconciliation" (
+CREATE TABLE IF NOT EXISTS "qa_reconciliation" (
     "id" TEXT NOT NULL,
     "qa_form_tapping_id" TEXT NOT NULL,
     "tl_name" TEXT NOT NULL,
@@ -115,7 +118,7 @@ CREATE TABLE "qa_reconciliation" (
 );
 
 -- CreateTable
-CREATE TABLE "qa_target_setting" (
+CREATE TABLE IF NOT EXISTS "qa_target_setting" (
     "id" TEXT NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "daily" INTEGER NOT NULL DEFAULT 0,
@@ -131,7 +134,7 @@ CREATE TABLE "qa_target_setting" (
 );
 
 -- CreateTable
-CREATE TABLE "app_notification" (
+CREATE TABLE IF NOT EXISTS "app_notification" (
     "id" TEXT NOT NULL,
     "recipient_id" TEXT NOT NULL,
     "type" TEXT NOT NULL,
@@ -145,7 +148,7 @@ CREATE TABLE "app_notification" (
 );
 
 -- CreateTable
-CREATE TABLE "FormDefinition" (
+CREATE TABLE IF NOT EXISTS "FormDefinition" (
     "id" TEXT NOT NULL,
     "key" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -158,7 +161,7 @@ CREATE TABLE "FormDefinition" (
 );
 
 -- CreateTable
-CREATE TABLE "FormSection" (
+CREATE TABLE IF NOT EXISTS "FormSection" (
     "id" TEXT NOT NULL,
     "form_id" TEXT NOT NULL,
     "key" TEXT NOT NULL,
@@ -171,7 +174,7 @@ CREATE TABLE "FormSection" (
 );
 
 -- CreateTable
-CREATE TABLE "FormField" (
+CREATE TABLE IF NOT EXISTS "FormField" (
     "id" TEXT NOT NULL,
     "form_id" TEXT NOT NULL,
     "section_id" TEXT,
@@ -193,7 +196,7 @@ CREATE TABLE "FormField" (
 );
 
 -- CreateTable
-CREATE TABLE "FormRecord" (
+CREATE TABLE IF NOT EXISTS "FormRecord" (
     "id" TEXT NOT NULL,
     "form_id" TEXT NOT NULL,
     "values" JSONB NOT NULL,
@@ -207,7 +210,7 @@ CREATE TABLE "FormRecord" (
 );
 
 -- CreateTable
-CREATE TABLE "MassTicket" (
+CREATE TABLE IF NOT EXISTS "MassTicket" (
     "id" TEXT NOT NULL,
     "ticket_number" TEXT NOT NULL,
     "ticket_subject" TEXT,
@@ -255,7 +258,7 @@ CREATE TABLE "MassTicket" (
 );
 
 -- CreateTable
-CREATE TABLE "MassProcessStep" (
+CREATE TABLE IF NOT EXISTS "MassProcessStep" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "order" INTEGER NOT NULL DEFAULT 0,
@@ -268,7 +271,7 @@ CREATE TABLE "MassProcessStep" (
 );
 
 -- CreateTable
-CREATE TABLE "MassTicketHistory" (
+CREATE TABLE IF NOT EXISTS "MassTicketHistory" (
     "id" TEXT NOT NULL,
     "ticket_id" TEXT NOT NULL,
     "ticket_number" TEXT NOT NULL,
@@ -289,7 +292,7 @@ CREATE TABLE "MassTicketHistory" (
 );
 
 -- CreateTable
-CREATE TABLE "MassAssignmentHistory" (
+CREATE TABLE IF NOT EXISTS "MassAssignmentHistory" (
     "id" TEXT NOT NULL,
     "ticket_id" TEXT NOT NULL,
     "ticket_number" TEXT NOT NULL,
@@ -306,7 +309,7 @@ CREATE TABLE "MassAssignmentHistory" (
 );
 
 -- CreateTable
-CREATE TABLE "MassDailyActivity" (
+CREATE TABLE IF NOT EXISTS "MassDailyActivity" (
     "id" TEXT NOT NULL,
     "activity_date" DATE NOT NULL,
     "ticket_id" TEXT NOT NULL,
@@ -322,88 +325,109 @@ CREATE TABLE "MassDailyActivity" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "qa_target_setting_name_type_tapper_key" ON "qa_target_setting"("name", "type", "tapper");
+CREATE UNIQUE INDEX IF NOT EXISTS "qa_target_setting_name_type_tapper_key" ON "qa_target_setting"("name", "type", "tapper");
 
 -- CreateIndex
-CREATE INDEX "app_notification_recipient_id_is_read_idx" ON "app_notification"("recipient_id", "is_read");
+CREATE INDEX IF NOT EXISTS "app_notification_recipient_id_is_read_idx" ON "app_notification"("recipient_id", "is_read");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FormDefinition_key_key" ON "FormDefinition"("key");
+CREATE UNIQUE INDEX IF NOT EXISTS "FormDefinition_key_key" ON "FormDefinition"("key");
 
 -- CreateIndex
-CREATE INDEX "FormSection_form_id_order_idx" ON "FormSection"("form_id", "order");
+CREATE INDEX IF NOT EXISTS "FormSection_form_id_order_idx" ON "FormSection"("form_id", "order");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FormSection_form_id_key_key" ON "FormSection"("form_id", "key");
+CREATE UNIQUE INDEX IF NOT EXISTS "FormSection_form_id_key_key" ON "FormSection"("form_id", "key");
 
 -- CreateIndex
-CREATE INDEX "FormField_form_id_order_idx" ON "FormField"("form_id", "order");
+CREATE INDEX IF NOT EXISTS "FormField_form_id_order_idx" ON "FormField"("form_id", "order");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FormField_form_id_key_key" ON "FormField"("form_id", "key");
+CREATE UNIQUE INDEX IF NOT EXISTS "FormField_form_id_key_key" ON "FormField"("form_id", "key");
 
 -- CreateIndex
-CREATE INDEX "FormRecord_form_id_createdAt_idx" ON "FormRecord"("form_id", "createdAt");
+CREATE INDEX IF NOT EXISTS "FormRecord_form_id_createdAt_idx" ON "FormRecord"("form_id", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "FormRecord_ref_number_idx" ON "FormRecord"("ref_number");
+CREATE INDEX IF NOT EXISTS "FormRecord_ref_number_idx" ON "FormRecord"("ref_number");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MassTicket_ticket_number_key" ON "MassTicket"("ticket_number");
+CREATE UNIQUE INDEX IF NOT EXISTS "MassTicket_ticket_number_key" ON "MassTicket"("ticket_number");
 
 -- CreateIndex
-CREATE INDEX "MassTicket_overall_status_idx" ON "MassTicket"("overall_status");
+CREATE INDEX IF NOT EXISTS "MassTicket_overall_status_idx" ON "MassTicket"("overall_status");
 
 -- CreateIndex
-CREATE INDEX "MassTicket_agent_idx" ON "MassTicket"("agent");
+CREATE INDEX IF NOT EXISTS "MassTicket_agent_idx" ON "MassTicket"("agent");
 
 -- CreateIndex
-CREATE INDEX "MassTicket_ticket_created_idx" ON "MassTicket"("ticket_created");
+CREATE INDEX IF NOT EXISTS "MassTicket_ticket_created_idx" ON "MassTicket"("ticket_created");
 
 -- CreateIndex
-CREATE INDEX "MassTicket_ageing_bucket_idx" ON "MassTicket"("ageing_bucket");
+CREATE INDEX IF NOT EXISTS "MassTicket_ageing_bucket_idx" ON "MassTicket"("ageing_bucket");
 
 -- CreateIndex
-CREATE INDEX "MassTicket_nama_perusahaan_idx" ON "MassTicket"("nama_perusahaan");
+CREATE INDEX IF NOT EXISTS "MassTicket_nama_perusahaan_idx" ON "MassTicket"("nama_perusahaan");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MassProcessStep_name_key" ON "MassProcessStep"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "MassProcessStep_name_key" ON "MassProcessStep"("name");
 
 -- CreateIndex
-CREATE INDEX "MassTicketHistory_ticket_id_createdAt_idx" ON "MassTicketHistory"("ticket_id", "createdAt");
+CREATE INDEX IF NOT EXISTS "MassTicketHistory_ticket_id_createdAt_idx" ON "MassTicketHistory"("ticket_id", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "MassTicketHistory_ticket_number_idx" ON "MassTicketHistory"("ticket_number");
+CREATE INDEX IF NOT EXISTS "MassTicketHistory_ticket_number_idx" ON "MassTicketHistory"("ticket_number");
 
 -- CreateIndex
-CREATE INDEX "MassAssignmentHistory_ticket_id_createdAt_idx" ON "MassAssignmentHistory"("ticket_id", "createdAt");
+CREATE INDEX IF NOT EXISTS "MassAssignmentHistory_ticket_id_createdAt_idx" ON "MassAssignmentHistory"("ticket_id", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "MassAssignmentHistory_ticket_number_idx" ON "MassAssignmentHistory"("ticket_number");
+CREATE INDEX IF NOT EXISTS "MassAssignmentHistory_ticket_number_idx" ON "MassAssignmentHistory"("ticket_number");
 
 -- CreateIndex
-CREATE INDEX "MassDailyActivity_activity_date_idx" ON "MassDailyActivity"("activity_date");
+CREATE INDEX IF NOT EXISTS "MassDailyActivity_activity_date_idx" ON "MassDailyActivity"("activity_date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MassDailyActivity_activity_date_ticket_id_agent_key" ON "MassDailyActivity"("activity_date", "ticket_id", "agent");
+CREATE UNIQUE INDEX IF NOT EXISTS "MassDailyActivity_activity_date_ticket_id_agent_key" ON "MassDailyActivity"("activity_date", "ticket_id", "agent");
 
 -- AddForeignKey
-ALTER TABLE "FormSection" ADD CONSTRAINT "FormSection_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FormSection" ADD CONSTRAINT "FormSection_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "FormField" ADD CONSTRAINT "FormField_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FormField" ADD CONSTRAINT "FormField_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "FormField" ADD CONSTRAINT "FormField_section_id_fkey" FOREIGN KEY ("section_id") REFERENCES "FormSection"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FormField" ADD CONSTRAINT "FormField_section_id_fkey" FOREIGN KEY ("section_id") REFERENCES "FormSection"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "FormRecord" ADD CONSTRAINT "FormRecord_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FormRecord" ADD CONSTRAINT "FormRecord_form_id_fkey" FOREIGN KEY ("form_id") REFERENCES "FormDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "MassTicketHistory" ADD CONSTRAINT "MassTicketHistory_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "MassTicketHistory" ADD CONSTRAINT "MassTicketHistory_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "MassAssignmentHistory" ADD CONSTRAINT "MassAssignmentHistory_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "MassAssignmentHistory" ADD CONSTRAINT "MassAssignmentHistory_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "MassDailyActivity" ADD CONSTRAINT "MassDailyActivity_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "MassDailyActivity" ADD CONSTRAINT "MassDailyActivity_ticket_id_fkey" FOREIGN KEY ("ticket_id") REFERENCES "MassTicket"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
