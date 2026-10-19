@@ -1,4 +1,10 @@
-import { IsIn, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class SubmitRecordDto {
   /**
@@ -30,6 +36,10 @@ export class UpdateRecordDto {
 }
 
 export class QueryRecordDto {
+  @IsOptional()
+  @IsString()
+  formKey?: string;
+
   @IsOptional()
   @IsString()
   search?: string;

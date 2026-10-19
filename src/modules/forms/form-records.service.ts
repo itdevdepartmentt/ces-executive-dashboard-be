@@ -1,10 +1,30 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { FormField, Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { FormsService } from './forms.service';
-import { QueryRecordDto, SubmitRecordDto, UpdateRecordDto } from './dto/record.dto';
+import {
+  QueryRecordDto,
+  SubmitRecordDto,
+  UpdateRecordDto,
+} from './dto/record.dto';
 
 type Values = Record<string, unknown>;
+
+export interface SubmissionRow {
+  id: string;
+  formKey: string;
+  formName: string;
+  createdAt: Date;
+  status: string;
+  ticketId: string | null;
+  corporateName: string | null;
+  projectId: string | null;
+  quantity: string | null;
+}
 
 interface TableColumn {
   key: string;
@@ -59,7 +79,67 @@ export class FormRecordsService {
 
     return {
       data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
+      meta: {
+        total,
+        page,
+        limit,
+        lastPage: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  /** Proyeksi rekap: lampiran tidak dikirim ulang bersama setiap baris. */
+  async listSubmissions(query: QueryRecordDto) {
+    const page = Math.max(1, Math.floor(Number(query.page) || 1));
+    const limit = Math.min(
+      200,
+      Math.max(1, Math.floor(Number(query.limit) || 25)),
+    );
+    const conditions: Prisma.Sql[] = [Prisma.sql`f.key <> 'mass-ticket'`];
+    if (query.formKey) conditions.push(Prisma.sql`f.key = ${query.formKey}`);
+    if (query.status) conditions.push(Prisma.sql`r.status = ${query.status}`);
+    if (query.search?.trim()) {
+      const keyword =
+        '%' + query.search.trim().replace(/[\\%_]/g, '\\$&') + '%';
+      conditions.push(Prisma.sql`(
+        r.ref_number ILIKE ${keyword}
+        OR r.values->>'ticketId' ILIKE ${keyword}
+        OR r.values->>'corporateName' ILIKE ${keyword}
+        OR r.values->>'projectId' ILIKE ${keyword}
+      )`);
+    }
+    const where = conditions.length
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+      : Prisma.empty;
+    const direction = query.sort === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+    const [counts, data] = await Promise.all([
+      this.prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*) AS total FROM "FormRecord" r
+        JOIN "FormDefinition" f ON f.id = r.form_id ${where}
+      `),
+      this.prisma.$queryRaw<SubmissionRow[]>(Prisma.sql`
+        SELECT r.id, f.key AS "formKey", f.name AS "formName",
+          r."createdAt", r.status,
+          COALESCE(NULLIF(r.values->>'ticketId', ''), r.ref_number) AS "ticketId",
+          r.values->>'corporateName' AS "corporateName",
+          r.values->>'projectId' AS "projectId",
+          COALESCE(NULLIF(r.values->>'quantity', ''),
+            CASE WHEN jsonb_typeof(r.values->'msisdnRows') = 'array'
+              THEN jsonb_array_length(r.values->'msisdnRows')::text END) AS quantity
+        FROM "FormRecord" r JOIN "FormDefinition" f ON f.id = r.form_id
+        ${where} ORDER BY r."createdAt" ${direction}, r.id ${direction}
+        LIMIT ${limit} OFFSET ${(page - 1) * limit}
+      `),
+    ]);
+    const total = Number(counts[0].total);
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        lastPage: Math.max(1, Math.ceil(total / limit)),
+      },
     };
   }
 
@@ -79,10 +159,26 @@ export class FormRecordsService {
     return record;
   }
 
-  async update(id: string, dto: UpdateRecordDto) {
+  async markGenerated(id: string) {
+    await this.prisma.formRecord.updateMany({
+      where: { id, status: { in: ['submitted', 'pending'] } },
+      data: { status: 'generated' },
+    });
+  }
+
+  async update(
+    id: string,
+    dto: UpdateRecordDto,
+    editor: { id: string; name: string; email: string },
+  ) {
     const record = await this.findOne(id);
 
-    const data: Prisma.FormRecordUpdateInput = {};
+    const data: Prisma.FormRecordUpdateInput = {
+      lastEditedById: editor.id,
+      lastEditedByName: editor.name,
+      lastEditedByEmail: editor.email,
+      lastEditedAt: new Date(),
+    };
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.refNumber !== undefined) data.refNumber = dto.refNumber;
 
@@ -98,6 +194,11 @@ export class FormRecordsService {
         merged,
         true,
       ) as Prisma.InputJsonValue;
+      if (dto.refNumber === undefined)
+        data.refNumber = this.guessRefNumber(merged);
+      if (record.status === 'generated' && dto.status === undefined) {
+        data.status = 'submitted';
+      }
     }
 
     return this.prisma.formRecord.update({ where: { id }, data });
@@ -116,7 +217,11 @@ export class FormRecordsService {
    * Memakai query mentah karena filter JSON Prisma tidak punya mode abai
    * huruf besar-kecil, padahal nama perusahaan diketik bebas oleh pengguna.
    */
-  async searchByCorporate(formKey: string, keyword: string, sourceKey?: string) {
+  async searchByCorporate(
+    formKey: string,
+    keyword: string,
+    sourceKey?: string,
+  ) {
     const term = keyword.trim();
     if (!term) return [];
 
@@ -195,6 +300,10 @@ export class FormRecordsService {
         (Array.isArray(raw) && raw.length === 0);
 
       if (empty) {
+        if (allowInactive && !field.isActive) {
+          if (raw !== undefined) out[field.key] = raw;
+          continue;
+        }
         if (field.required) errors.push(`"${field.label}" wajib diisi.`);
         if (field.defaultValue != null) out[field.key] = field.defaultValue;
         continue;
@@ -231,7 +340,8 @@ export class FormRecordsService {
     switch (field.type) {
       case 'NUMBER': {
         const num = Number(raw);
-        if (!Number.isFinite(num)) return { error: `"${label}" harus berupa angka.` };
+        if (!Number.isFinite(num))
+          return { error: `"${label}" harus berupa angka.` };
         const rules = (field.validation ?? {}) as Record<string, number>;
         if (rules.min != null && num < rules.min) {
           return { error: `"${label}" minimal ${rules.min}.` };
@@ -298,7 +408,11 @@ export class FormRecordsService {
 
           for (const col of columns) {
             const cell = source[col.key];
-            if (cell === undefined || cell === null || String(cell).trim() === '') {
+            if (
+              cell === undefined ||
+              cell === null ||
+              String(cell).trim() === ''
+            ) {
               missing.push(col.label);
             } else {
               cleaned[col.key] = String(cell).trim();
@@ -342,9 +456,15 @@ export class FormRecordsService {
 
   /** Nomor rujukan diambil dari field yang lazim dipakai sebagai identitas. */
   private guessRefNumber(values: Values): string | null {
-    for (const key of ['ticketId', 'ticketNumber', 'projectId', 'documentNumber']) {
+    for (const key of [
+      'ticketId',
+      'ticketNumber',
+      'projectId',
+      'documentNumber',
+    ]) {
       const candidate = values[key];
-      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+      if (typeof candidate === 'string' && candidate.trim())
+        return candidate.trim();
     }
     return null;
   }

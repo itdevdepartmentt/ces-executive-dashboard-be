@@ -711,6 +711,10 @@ model FormRecord {
   /// Nomor rujukan (mis. ID tiket) agar bisa dicari tanpa menelusuri JSON
   refNumber String?        @map("ref_number")
   createdBy String?        @map("created_by")
+  lastEditedById String?   @map("last_edited_by_id")
+  lastEditedByName String? @map("last_edited_by_name")
+  lastEditedByEmail String? @map("last_edited_by_email")
+  lastEditedAt DateTime?   @map("last_edited_at")
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   form      FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
