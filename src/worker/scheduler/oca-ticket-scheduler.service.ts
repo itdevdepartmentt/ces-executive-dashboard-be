@@ -1,6 +1,6 @@
 // ticket-scheduler.service.ts
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 // import { InjectQueue } from '@nestjs/bullmq';
 // import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -46,7 +46,12 @@ export interface OcaSyncResult {
   errorHttpStatus: number | null;
 }
 
-const DEFAULT_CRON = CronExpression.EVERY_30_MINUTES;
+/**
+ * Tiap 15 menit, mengikuti kecepatan OCA mengisi data di sisi mereka.
+ * CronExpression tidak punya EVERY_15_MINUTES, jadi ditulis langsung dengan
+ * format enam field yang sama seperti konstanta bawaannya.
+ */
+const DEFAULT_CRON = '0 */15 * * * *';
 
 /**
  * get-list murah dicoba tiap 15 menit, tapi jalur report menyuruh OCA membuat
