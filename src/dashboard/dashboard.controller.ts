@@ -12,6 +12,7 @@ import { OcaService } from './oca.service';
 import { OcaOmnixService } from './oca-omnix.service';
 import { JwtAuthGuard } from 'src/common/guard/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { DepartmentDashboardService } from './department-dashboard.service';
 
 @UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ transform: true }))
@@ -20,7 +21,13 @@ export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
     private readonly ocaService: OcaOmnixService,
+    private readonly departments: DepartmentDashboardService,
   ) {}
+
+  @Get('departments')
+  getDepartments(@Query() filter: DashboardFilterDto) {
+    return this.departments.getSummary(filter);
+  }
 
   //   // Endpoint 1: Get the daily breakdown (for charts)
   //   // Usage: GET /dashboard/trend?startDate=2025-01-01&endDate=2025-01-31
