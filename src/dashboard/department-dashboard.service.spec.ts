@@ -22,6 +22,7 @@ describe('department dashboard', () => {
         total: 0,
         open: 0,
         closed: 0,
+        slaPercentage: null,
         breakdown: [],
       })),
     );
@@ -30,8 +31,24 @@ describe('department dashboard', () => {
   it('keeps department totals separate from agent and unresolved status rows', async () => {
     const { service } = setup([
       { department: 'FCR', name: null, total: 3, open: 1, closed: 2 },
-      { department: 'FCR', name: 'Agent A', total: 2 },
-      { department: 'FCR', name: 'Belum ditugaskan', total: 1 },
+      {
+        department: 'FCR',
+        name: 'Agent A',
+        total: 2,
+        open: 1,
+        closed: 1,
+        slaEligible: 2,
+        slaAchieved: 1,
+      },
+      {
+        department: 'FCR',
+        name: 'Belum ditugaskan',
+        total: 1,
+        open: 0,
+        closed: 1,
+        slaEligible: 0,
+        slaAchieved: 0,
+      },
       { department: 'NON FCR', name: null, total: 1, open: 1, closed: 0 },
       { department: 'NON FCR', name: 'Agent B', total: 1 },
       { department: 'UNRESOLVED', name: null, total: 2, open: 2, closed: 0 },
@@ -46,13 +63,23 @@ describe('department dashboard', () => {
       total: 3,
       open: 1,
       closed: 2,
+      slaPercentage: null,
       breakdown: [
-        { name: 'Agent A', total: 2 },
-        { name: 'Belum ditugaskan', total: 1 },
+        { name: 'Agent A', total: 2, open: 1, closed: 1, slaPercentage: 50 },
+        {
+          name: 'Belum ditugaskan',
+          total: 1,
+          open: 0,
+          closed: 1,
+          slaPercentage: null,
+        },
       ],
     });
     expect(result[1].total).toBe(1);
-    expect(result[2].breakdown).toEqual([{ name: 'Eskalasi IT', total: 2 }]);
+    expect(result[2].breakdown[0]).toMatchObject({
+      name: 'Eskalasi IT',
+      total: 2,
+    });
   });
 
   it('counts distinct business ticket IDs and binds filters without an FCR flag filter', async () => {
@@ -71,8 +98,11 @@ describe('department dashboard', () => {
     expect(sql.sql).toContain("department = 'TIKET UNRESOLVED'");
     expect(sql.sql).toContain('ticket_created >= ?::timestamptz');
     expect(sql.sql).toContain('ticket_created < ?::timestamptz');
-    expect(sql.sql).not.toContain('isFcr');
-    expect(sql.sql).not.toContain('statusTiket');
+    expect(sql.sql).toContain('"isFcrRealisasi" = true');
+    expect(sql.sql).toContain('FILTER (WHERE "statusTiket" AND "inSla")');
+    expect(sql.sql).toContain(
+      "AND (department_key <> 'UNRESOLVED' OR NOT closed)",
+    );
     expect(sql.sql).not.toContain("Customer's request");
     expect(sql.values).toEqual([
       '2026-11-08T17:00:00Z',
@@ -81,5 +111,26 @@ describe('department dashboard', () => {
       'Sub',
       'Detail',
     ]);
+  });
+
+  it('uses Realisasi ticket SLA for FCR and unweighted agent SLA for NON FCR', async () => {
+    const { service } = setup([
+      {
+        department: 'FCR',
+        name: null,
+        realisasiEligible: 4,
+        realisasiAchieved: 3,
+        slaEligible: 10,
+        slaAchieved: 4,
+      },
+      { department: 'NON FCR', name: null, slaEligible: 11, slaAchieved: 10 },
+      { department: 'NON FCR', name: 'A', slaEligible: 10, slaAchieved: 10 },
+      { department: 'NON FCR', name: 'B', slaEligible: 1, slaAchieved: 0 },
+      { department: 'NON FCR', name: 'C', slaEligible: 0, slaAchieved: 0 },
+    ]);
+    const result = await service.getSummary({});
+    expect(result[0].slaPercentage).toBe(75);
+    expect(result[1].slaPercentage).toBe(50);
+    expect(result[2].slaPercentage).toBeNull();
   });
 });

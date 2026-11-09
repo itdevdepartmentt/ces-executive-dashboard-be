@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { qualifiesFcrRealisasi } from '../utils/fcr-realisasi.utils';
 import { PrismaService } from 'prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
 import { ExcelUtils } from '../excel-utils.helper';
@@ -246,7 +247,12 @@ export class OmnixUploadService {
           'Eskalasi/ID Remedy_IT/AO/EMS': col(H.ticketITAO).text,
         });
 
-        const fcrRealisasi = (!typeEskalasi || typeEskalasi === '-') ? true : false;
+        const fcrRealisasi = qualifiesFcrRealisasi({
+          isFcr: fcrStatus,
+          status: col(H.ticketStatusName).text,
+          noEscalation: [typeEskalasi, col(H.ticketRemedyNo).text, col(H.ticketITAO).text]
+            .every((value) => !value.trim() || value.trim() === '-'),
+        });
 
         // Helper to safely parse Integers (returns null if empty or invalid)
         const parseIntSafe = (value: any) => {

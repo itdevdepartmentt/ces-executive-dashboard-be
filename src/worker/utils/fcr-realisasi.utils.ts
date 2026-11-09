@@ -3,7 +3,21 @@
  * Translates the Excel formulas from "FCR Realisasi.xlsx" sheet "Revise".
  */
 
+export function qualifiesFcrRealisasi(data: {
+  isFcr: boolean;
+  status: string | null | undefined;
+  noEscalation: boolean;
+}): boolean {
+  return (
+    data.isFcr &&
+    /^(close|resolve)/i.test((data.status ?? '').trim()) &&
+    data.noEscalation
+  );
+}
+
 export function calculateOcaFcrRealisasi(data: {
+  isFcr: boolean;
+  status: string | null | undefined;
   eskalasiAm: string;
   description: string;
   idRemedyNo: string;
@@ -173,5 +187,14 @@ export function calculateOcaFcrRealisasi(data: {
   }
 
   // No Escalation matched -> FCR Realisasi = True
-  return { isFcrRealisasi: true, eskalasiRealisasiTarget: null };
+  return {
+    isFcrRealisasi: qualifiesFcrRealisasi({
+      isFcr: data.isFcr,
+      status: data.status,
+      noEscalation:
+        (!eskalasiAm || eskalasiAm === '-') &&
+        (!idRemedyNo || idRemedyNo === '-'),
+    }),
+    eskalasiRealisasiTarget: null,
+  };
 }

@@ -185,6 +185,8 @@ export class OcaUploadService {
       });
 
       const fcrRealisasiResult = calculateOcaFcrRealisasi({
+        isFcr: fcrStatus,
+        status: row['Last Status'],
         eskalasiAm: row['Eskalasi/ID Remedy_IT/AO/EMS'],
         description: row['Description'],
         idRemedyNo: row['ID Remedy_NO'],

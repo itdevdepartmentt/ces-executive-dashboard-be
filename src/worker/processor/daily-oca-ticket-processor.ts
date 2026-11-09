@@ -164,6 +164,8 @@ export class DailyOcaTicketProcessor {
           });
   
           const fcrRealisasiResult = calculateOcaFcrRealisasi({
+            isFcr: fcrStatus,
+            status: mappedData.lastStatus,
             eskalasiAm: mappedData.eskalasiId,
             description: mappedData.description,
             idRemedyNo: mappedData.idRemedyNo,

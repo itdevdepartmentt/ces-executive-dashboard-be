@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { DashboardFilterDto, PaginationDto, PriorityTicketQueryDto, PriorityType } from './dto/dashboard-filter.dto';
 import { Prisma } from '@prisma/client';
+import { fcrExpression } from './fcr-expression';
 
 @Injectable()
 export class OcaOmnixService {
@@ -55,7 +56,9 @@ export class OcaOmnixService {
   }
 
   async getExecutiveSummary(filter: DashboardFilterDto) {
-    const isFcrColOca = filter.fcrType === 'realisasi' ? '"isFcrRealisasi"' : '"isFcr"';
+    const isFcrColOca = fcrExpression(filter.fcrType, 'OCA').sql;
+    const isFcrColOmnix = fcrExpression(filter.fcrType, 'OMNIX').sql;
+    const isFcrColCall = fcrExpression(filter.fcrType, 'CALL').sql;
     // 1. DEFINE CTE (Reusable "Virtual Table")
     // We normalize the timestamp to "ticket_timestamp" for easier filtering
     const unifiedCte = `
@@ -76,7 +79,7 @@ export class OcaOmnixService {
                 "ticket_status_name" as "last_status", 
                 "statusTiket", 
                 "inSla",
-                ${isFcrColOca} as "isFcr",
+                ${isFcrColOmnix} as "isFcr",
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
             FROM "RawOmnix"
@@ -87,7 +90,7 @@ export class OcaOmnixService {
                 'closed' as "last_status",
                 "statusTiket",
                 "inSla",
-                ${isFcrColOca} as "isFcr",
+                ${isFcrColCall} as "isFcr",
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
             FROM "RawCall"
@@ -252,6 +255,7 @@ ORDER BY 1 ASC;
 
   async getPriorityData(filter: DashboardFilterDto) {
     const { startDate, endDate } = filter;
+    const fcr = fcrExpression(filter.fcrType, 'OCA');
 
     const [priorityData] = await this.prisma.$queryRaw<any[]>`
    SELECT
@@ -266,7 +270,7 @@ ORDER BY 1 ASC;
     WHERE "ticket_created" >= ${startDate}::timestamptz 
       AND "ticket_created" < ${endDate}::timestamptz
       AND "statusTiket"
-      AND (${filter.isFcr ?? null}::boolean IS NULL OR "isFcr" = ${filter.isFcr ?? null}::boolean)
+      AND (${filter.isFcr ?? null}::boolean IS NULL OR ${fcr} = ${filter.isFcr ?? null}::boolean)
       AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
       
     `;
@@ -292,6 +296,8 @@ ORDER BY 1 ASC;
     };
 
     const typeCondition = typeConditions[type];
+    const fcrCondition = query.isFcr === undefined ? ''
+      : `AND (${fcrExpression(query.fcrType, 'OCA').sql}) = ${query.isFcr ? 'true' : 'false'}`;
 
     // Search condition (optional)
     const searchCondition = search
@@ -311,6 +317,7 @@ ORDER BY 1 ASC;
         AND "statusTiket"
         AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
         AND ${typeCondition}
+        ${fcrCondition}
         ${searchCondition}
     `;
 
@@ -330,6 +337,7 @@ ORDER BY 1 ASC;
         AND "statusTiket"
         AND NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
         AND ${typeCondition}
+        ${fcrCondition}
         ${searchCondition}
       ORDER BY "ticket_created" DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -421,7 +429,9 @@ ORDER BY 1 ASC;
   // 2. CHANNEL BREAKDOWN (The Complex Pivot)
   // ---------------------------------------------------------
   async getChannelStats(filter: DashboardFilterDto) {
-    const isFcrColOca = filter.fcrType === 'realisasi' ? Prisma.sql`"isFcrRealisasi"` : Prisma.sql`"isFcr"`;
+    const isFcrColOca = fcrExpression(filter.fcrType, 'OCA');
+    const isFcrColOmnix = fcrExpression(filter.fcrType, 'OMNIX');
+    const isFcrColCall = fcrExpression(filter.fcrType, 'CALL');
     const stats = await this.prisma.$queryRaw<any[]>`
     WITH "UnifiedData" AS (
       -- 1. DATA FROM OCA (Your existing structure)
@@ -445,7 +455,7 @@ ORDER BY 1 ASC;
         "product",                                 -- MAP: Hardcode if Omnix doesn't have product types
         "date_close" as "resolve_time",             -- MAP: Omnix timestamp -> Standard Name
         "date_start_interaction" as "ticket_created",       -- MAP: Omnix timestamp -> Standard Name
-        ${isFcrColOca} as "isFcr",                                    -- MAP: Omnix column -> Standard Name
+        ${isFcrColOmnix} as "isFcr",                                    -- MAP: Omnix column -> Standard Name
         "isPareto",                                    -- MAP: Default to false if Omnix lacks this
         'OMNIX' as "source_origin",
         'OMNIX' as "source_kip"
@@ -462,7 +472,7 @@ ORDER BY 1 ASC;
         "product",
         NULL::timestamp as "resolve_time",
         "update_stamp" as "ticket_created",
-        ${isFcrColOca} as "isFcr",
+        ${isFcrColCall} as "isFcr",
         "isPareto",
         'OCA' as "source_origin",
         'CALL' as "source_kip"
@@ -630,7 +640,9 @@ ORDER BY 1 ASC;
       }
     }
 
-    const isFcrColOca = filter.fcrType === 'realisasi' ? '"isFcrRealisasi"' : '"isFcr"';
+    const isFcrColOca = fcrExpression(filter.fcrType, 'OCA').sql;
+    const isFcrColOmnix = fcrExpression(filter.fcrType, 'OMNIX').sql;
+    const isFcrColCall = fcrExpression(filter.fcrType, 'CALL').sql;
 
     // 2. RUN QUERY
     // We use ${channelColumn} in the WHERE clause instead of hardcoding "channel"
@@ -666,7 +678,7 @@ ORDER BY 1 ASC;
         ${metricType === 'nama_perusahaan' ? '"corp"' : '"topic_reason_2"'} as "metric_name",
         "update_stamp" as "date_ref",
         "eskalasi", -- Fallback for missing column
-        ${isFcrColOca} as "isFcr",
+        ${isFcrColCall} as "isFcr",
         "statusTiket"
       FROM "RawCall"
       WHERE 'callcenter' = $1
@@ -679,7 +691,7 @@ ORDER BY 1 ASC;
         ${metricType === 'nama_perusahaan' ? '"ticket_perusahaan"' : '"subCategory"'} as "metric_name",
         "date_start_interaction" as "date_ref",
         "eskalasi",
-        ${isFcrColOca} as "isFcr",
+        ${isFcrColOmnix} as "isFcr",
         "statusTiket"
       FROM "RawOmnix"
       WHERE "channel_name" = $1 ${this.buildCategoryFilterQuery(filter, 'OMNIX')}
