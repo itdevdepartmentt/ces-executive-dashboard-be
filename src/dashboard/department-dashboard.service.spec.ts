@@ -110,7 +110,8 @@ describe('department dashboard', () => {
     expect(sql.sql).toContain("department = 'TIKET UNRESOLVED'");
     expect(sql.sql).toContain('ticket_created >= ?::timestamptz');
     expect(sql.sql).toContain('ticket_created < ?::timestamptz');
-    expect(sql.sql).toContain('"isFcrRealisasi" = true');
+    expect(sql.sql).toContain('"isFcr" = true');
+    expect(sql.sql).not.toContain('"isFcrRealisasi" = true');
     expect(sql.sql).toContain('FILTER (WHERE "statusTiket" AND in_sla_kini)');
     expect(sql.sql).toContain(
       "AND (department_key <> 'UNRESOLVED' OR NOT closed)",

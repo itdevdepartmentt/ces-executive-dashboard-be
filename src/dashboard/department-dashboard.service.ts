@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DashboardFilterDto } from './dto/dashboard-filter.dto';
 import { fcrExpression } from './fcr-expression';
+import { currentSlaExpression } from './sla-expression';
 
 type Department = 'FCR' | 'NON FCR' | 'UNRESOLVED';
 interface DepartmentRow {
@@ -61,28 +62,16 @@ export class DepartmentDashboardService {
           COALESCE(NULLIF(NULLIF(BTRIM(assignee), ''), '-'), 'Belum ditugaskan') AS agent,
           COALESCE(NULLIF(NULLIF(BTRIM(last_status), ''), '-'), 'Status belum diisi') AS status,
           COALESCE(BTRIM(last_status) ILIKE 'close%' OR BTRIM(last_status) ILIKE 'resolve%', false) AS closed,
-          "statusTiket", "inSla", channel, product, ticket_created,
+          "statusTiket", "inSla", channel,
+          ${currentSlaExpression('OCA')} AS in_sla_kini,
           ${fcrExpression('realisasi', 'OCA')} AS realisasi
         FROM "RawOca" WHERE ${Prisma.join(conditions, ' AND ')}
-      ), dinilai AS (
-        SELECT *,
-          -- Closed/Resolved retains its recorded SLA; open tickets age at query time.
-          CASE
-            WHEN closed THEN COALESCE("inSla", false)
-            WHEN ticket_created IS NULL OR ticket_created > NOW() THEN false
-            WHEN UPPER(BTRIM(COALESCE(product, ''))) = 'CONNECTIVITY'
-              THEN NOW() - ticket_created <= interval '3 hours'
-            WHEN UPPER(BTRIM(COALESCE(product, ''))) = 'SOLUTION'
-              THEN NOW() - ticket_created <= interval '6 hours'
-            ELSE false
-          END AS in_sla_kini
-        FROM normalized
       ), tickets AS (
         SELECT *, CASE
           WHEN department IN ('FCR', 'DEPARTEMEN FCR', 'DEPARTMENT FCR') THEN 'FCR'
           WHEN department IN ('NON FCR', 'DEPARTEMEN NON FCR', 'DEPARTMENT NON FCR') THEN 'NON FCR'
           WHEN department = 'TIKET UNRESOLVED' THEN 'UNRESOLVED'
-        END AS department_key FROM dinilai
+        END AS department_key FROM normalized
       )
       SELECT department_key AS department,
         CASE WHEN GROUPING(CASE WHEN department_key = 'UNRESOLVED' THEN status ELSE agent END) = 1

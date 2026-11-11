@@ -11,7 +11,8 @@ describe('dashboard FCR selection', () => {
     'enforces the subset and escalation rules for historical %s records',
     (source) => {
       const sql = fcrExpression('realisasi', source);
-      expect(sql.sql).toContain('"isFcr" = true AND "isFcrRealisasi" = true');
+      expect(sql.sql).toContain('"isFcr" = true');
+      expect(sql.sql).not.toContain('isFcrRealisasi');
       expect(sql.sql).toContain('BTRIM("eskalasi")');
       expect(sql.sql).not.toContain('inSla');
       expect(sql.values).toEqual([]);

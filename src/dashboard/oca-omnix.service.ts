@@ -3,6 +3,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { DashboardFilterDto, PaginationDto, PriorityTicketQueryDto, PriorityType } from './dto/dashboard-filter.dto';
 import { Prisma } from '@prisma/client';
 import { fcrExpression } from './fcr-expression';
+import { currentSlaExpression, slaEligibilityExpression } from './sla-expression';
 
 @Injectable()
 export class OcaOmnixService {
@@ -66,7 +67,8 @@ export class OcaOmnixService {
             SELECT 
                 "last_status", 
                 "statusTiket", 
-                "inSla",
+                ${filter.isFcr === true ? currentSlaExpression('OCA').sql : '"inSla"'} AS "inSla",
+                ${slaEligibilityExpression(filter.isFcr, 'OCA').sql} AS "slaEligible",
                 ${isFcrColOca} as "isFcr",
                 "ticket_created" as "ticket_timestamp",
                 "channel"
@@ -78,7 +80,8 @@ export class OcaOmnixService {
             SELECT 
                 "ticket_status_name" as "last_status", 
                 "statusTiket", 
-                "inSla",
+                ${filter.isFcr === true ? currentSlaExpression('OMNIX').sql : '"inSla"'} AS "inSla",
+                ${slaEligibilityExpression(filter.isFcr, 'OMNIX').sql} AS "slaEligible",
                 ${isFcrColOmnix} as "isFcr",
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
@@ -89,7 +92,8 @@ export class OcaOmnixService {
             SELECT
                 'closed' as "last_status",
                 "statusTiket",
-                "inSla",
+                ${filter.isFcr === true ? currentSlaExpression('CALL').sql : '"inSla"'} AS "inSla",
+                ${slaEligibilityExpression(filter.isFcr, 'CALL').sql} AS "slaEligible",
                 ${isFcrColCall} as "isFcr",
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
@@ -127,20 +131,22 @@ export class OcaOmnixService {
                 AND ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%')
             )::int AS "totalClosed",
 
+            COUNT(*) FILTER (WHERE "slaEligible" AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter']))::int AS "slaEligibleTickets",
+            COUNT(*) FILTER (WHERE "slaEligible" AND "inSla" AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter']))::int AS "slaInSlaTickets",
+
             -- SLA percentage: filtered by channel
             CASE
                 WHEN COUNT(*) FILTER (
-                    WHERE "statusTiket"
+                    WHERE "slaEligible"
                     AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(*) FILTER (
-                            WHERE "inSla"  AND "statusTiket"
-                            AND "statusTiket"
+                            WHERE "inSla" AND "slaEligible"
                             AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(*) FILTER (
-                            WHERE "statusTiket"
+                            WHERE "slaEligible"
                             AND "channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
@@ -173,7 +179,7 @@ export class OcaOmnixService {
             UnifiedFiltered AS (
                 SELECT 
                     DATE("ticket_timestamp" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta') AS ticket_date,
-                    "statusTiket",
+                    "slaEligible",
                     "channel",
                     "inSla"
                 FROM "UnifiedTickets"
@@ -186,16 +192,16 @@ export class OcaOmnixService {
             COUNT(uf.ticket_date)::int AS "value",
             CASE 
                 WHEN COUNT(uf.ticket_date) FILTER (
-                    WHERE uf."statusTiket"
+                    WHERE uf."slaEligible"
                     AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                 ) > 0 THEN
                     ROUND(
                         COUNT(uf.ticket_date) FILTER (
-                            WHERE uf."inSla"  AND uf."statusTiket"
+                            WHERE uf."inSla"  AND uf."slaEligible"
                             AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         / COUNT(uf.ticket_date) FILTER (
-                            WHERE uf."statusTiket"
+                            WHERE uf."slaEligible"
                             AND uf."channel" ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter'])
                         )::numeric
                         * 100,
@@ -436,12 +442,13 @@ ORDER BY 1 ASC;
     WITH "UnifiedData" AS (
       -- 1. DATA FROM OCA (Your existing structure)
       SELECT 
-        "channel", "statusTiket", "inSla", "last_status", "product", 
+        "channel", "statusTiket", ${filter.isFcr === true ? currentSlaExpression('OCA') : Prisma.sql`"inSla"`} AS "inSla",
+        ${slaEligibilityExpression(filter.isFcr, 'OCA')} AS "slaEligible", "last_status", "product",
         "resolve_time", "ticket_created", ${isFcrColOca} as "isFcr", "isPareto",
         'OCA' as "source_origin", -- Tagging the source just in case
         'OCA' as "source_kip" 
       FROM "RawOca"
-      WHERE "ticket_created" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      WHERE "ticket_created" >= ${filter.startDate}::timestamptz AND "ticket_created" < ${filter.endDate}::timestamptz
       ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'OCA'))}
 
       UNION ALL
@@ -450,7 +457,8 @@ ORDER BY 1 ASC;
       SELECT 
         "channel_name" as "channel",                              -- e.g. 'instagram' or 'whatsapp'
         "statusTiket",                          -- MAP: Omnix column -> Standard Name
-        "inSla",                                    -- MAP: Omnix column -> Standard Name
+        ${filter.isFcr === true ? currentSlaExpression('OMNIX') : Prisma.sql`"inSla"`} AS "inSla",
+        ${slaEligibilityExpression(filter.isFcr, 'OMNIX')} AS "slaEligible",
         "ticket_status_name" as "last_status",              -- MAP: Omnix column -> Standard Name
         "product",                                 -- MAP: Hardcode if Omnix doesn't have product types
         "date_close" as "resolve_time",             -- MAP: Omnix timestamp -> Standard Name
@@ -460,14 +468,15 @@ ORDER BY 1 ASC;
         'OMNIX' as "source_origin",
         'OMNIX' as "source_kip"
       FROM "RawOmnix"
-      WHERE "date_start_interaction" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      WHERE "date_start_interaction" >= ${filter.startDate}::timestamptz AND "date_start_interaction" < ${filter.endDate}::timestamptz
       ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'OMNIX'))}
     
       UNION ALL
       SELECT
         "unit_type" as "channel",
         "statusTiket",
-        "inSla",
+        ${filter.isFcr === true ? currentSlaExpression('CALL') : Prisma.sql`"inSla"`} AS "inSla",
+        ${slaEligibilityExpression(filter.isFcr, 'CALL')} AS "slaEligible",
         'closed' as "last_status",
         "product",
         NULL::timestamp as "resolve_time",
@@ -477,7 +486,7 @@ ORDER BY 1 ASC;
         'OCA' as "source_origin",
         'CALL' as "source_kip"
       FROM "RawCall"
-      WHERE "update_stamp" BETWEEN ${filter.startDate}::timestamp AND ${filter.endDate}::timestamp
+      WHERE "update_stamp" >= ${filter.startDate}::timestamptz AND "update_stamp" < ${filter.endDate}::timestamptz
       ${Prisma.raw(this.buildCategoryFilterQuery(filter, 'CALL'))}
     )
 
@@ -486,11 +495,13 @@ ORDER BY 1 ASC;
         MIN(channel) AS channel,
         source_origin, -- Grab this so we know which table to query for details later
         COUNT(*) FILTER (WHERE "statusTiket" = true)::int as "total",
+        COUNT(*) FILTER (WHERE "slaEligible")::int as "slaEligibleTickets",
+        COUNT(*) FILTER (WHERE "slaEligible" AND "inSla")::int as "slaInSlaTickets",
         
         -- % SLA (Logic reused exactly as is!)
-        CASE WHEN COUNT(*) FILTER (WHERE "statusTiket" = true) > 0 
-             THEN ROUND((COUNT(*) FILTER (WHERE "inSla" AND "statusTiket")::decimal / NULLIF(COUNT(*) FILTER (WHERE "statusTiket" = true),0)) * 100, 2)
-             ELSE 100 END as "pctSla",
+        CASE WHEN COUNT(*) FILTER (WHERE "slaEligible" = true) > 0
+             THEN ROUND((COUNT(*) FILTER (WHERE "inSla" AND "slaEligible")::decimal / NULLIF(COUNT(*) FILTER (WHERE "slaEligible" = true),0)) * 100, 2)
+             ELSE ${filter.isFcr === true ? 0 : 100} END as "pctSla",
 
         -- Basic Counts
         COUNT(*) FILTER (WHERE NOT ("last_status" ILIKE 'close%' OR "last_status" ILIKE 'resolve%') AND "statusTiket" = true)::int as "open",
@@ -529,23 +540,23 @@ ORDER BY 1 ASC;
         COUNT(*) FILTER (WHERE "product" = 'SOLUTION' AND ("resolve_time" - "ticket_created") > interval '6 hours')::int as "solOver6h",
 
         -- SLA Percentage WITHIN FCR and Pareto
-        CASE WHEN COUNT(*) FILTER (WHERE "isFcr" and "statusTiket") > 0 THEN 
-            ROUND((COUNT(*) FILTER (WHERE "isFcr" AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isFcr" and "statusTiket")) * 100, 2) 
+        CASE WHEN COUNT(*) FILTER (WHERE "isFcr" and "slaEligible") > 0 THEN
+            ROUND((COUNT(*) FILTER (WHERE "isFcr" AND "inSla" and "slaEligible")::decimal / COUNT(*) FILTER (WHERE "isFcr" and "slaEligible")) * 100, 2)
             ELSE 0 END as "pctFcr",
 
         -- SLA Percentage WITHIN Non-FCR
-        CASE WHEN COUNT(*) FILTER (WHERE NOT "isFcr" and "statusTiket") > 0 THEN 
-            ROUND((COUNT(*) FILTER (WHERE NOT "isFcr" AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE NOT "isFcr" and "statusTiket")) * 100, 2) 
+        CASE WHEN COUNT(*) FILTER (WHERE NOT "isFcr" and "slaEligible") > 0 THEN
+            ROUND((COUNT(*) FILTER (WHERE NOT "isFcr" AND "inSla" and "slaEligible")::decimal / COUNT(*) FILTER (WHERE NOT "isFcr" and "slaEligible")) * 100, 2)
             ELSE 0 END as "pctNonFcr",
 
         -- SLA Percentage WITHIN Pareto
-        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = true and "statusTiket") > 0 THEN 
-            ROUND((COUNT(*) FILTER (WHERE "isPareto" = true AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isPareto" = true and "statusTiket")) * 100, 2) 
+        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = true and "slaEligible") > 0 THEN
+            ROUND((COUNT(*) FILTER (WHERE "isPareto" = true AND "inSla" and "slaEligible")::decimal / COUNT(*) FILTER (WHERE "isPareto" = true and "slaEligible")) * 100, 2)
             ELSE 0 END as "pctPareto",
 
         -- SLA Percentage WITHIN Non-Pareto
-        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = false and "statusTiket") > 0 THEN 
-            ROUND((COUNT(*) FILTER (WHERE "isPareto" = false AND "inSla" and "statusTiket")::decimal / COUNT(*) FILTER (WHERE "isPareto" = false and "statusTiket")) * 100, 2) 
+        CASE WHEN COUNT(*) FILTER (WHERE "isPareto" = false and "slaEligible") > 0 THEN
+            ROUND((COUNT(*) FILTER (WHERE "isPareto" = false AND "inSla" and "slaEligible")::decimal / COUNT(*) FILTER (WHERE "isPareto" = false and "slaEligible")) * 100, 2)
             ELSE 0 END as "pctNotPareto"
 
     FROM "UnifiedData"

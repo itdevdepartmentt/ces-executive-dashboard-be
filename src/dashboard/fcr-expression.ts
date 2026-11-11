@@ -1,13 +1,8 @@
 import { Prisma } from '@prisma/client';
 
 /**
- * Apply the current eligibility rule to historical flags without rewriting data.
- *
- * Status tiket tidak lagi diperiksa: realisasi kini mencakup tiket yang masih
- * berjalan, bukan hanya yang sudah Closed/Resolved. Perhatikan bahwa ekspresi
- * ini meng-AND dengan kolom "isFcrRealisasi" yang tersimpan, jadi ia hanya
- * bisa mempersempit hasil — melonggarkan aturan di sini saja tidak cukup,
- * kolom tersimpannya juga harus dihitung ulang untuk data lama.
+ * Realisasi uses KIP FCR and current escalation fields, across all statuses.
+ * Historical isFcrRealisasi flags can reflect obsolete rules and are not a filter.
  */
 export function fcrExpression(
   type: 'kip' | 'realisasi' | undefined,
@@ -24,7 +19,7 @@ export function fcrExpression(
           AND COALESCE(BTRIM("ticket_Remedy_NO"), '') IN ('', '-')`
         : Prisma.sql`TRUE`;
   return Prisma.sql`COALESCE((
-    "isFcr" = true AND "isFcrRealisasi" = true
+    "isFcr" = true
     AND COALESCE(BTRIM("eskalasi"), '') IN ('', '-')
     AND ${targetEmpty}
   ), false)`;
