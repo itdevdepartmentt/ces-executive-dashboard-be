@@ -65,12 +65,22 @@ describe('department dashboard', () => {
       closed: 2,
       slaPercentage: null,
       breakdown: [
-        { name: 'Agent A', total: 2, open: 1, closed: 1, slaPercentage: 50 },
+        {
+          name: 'Agent A',
+          total: 2,
+          open: 1,
+          closed: 1,
+          inSla: 1,
+          outSla: 1,
+          slaPercentage: 50,
+        },
         {
           name: 'Belum ditugaskan',
           total: 1,
           open: 0,
           closed: 1,
+          inSla: 0,
+          outSla: 0,
           slaPercentage: null,
         },
       ],
@@ -113,7 +123,7 @@ describe('department dashboard', () => {
     ]);
   });
 
-  it('uses Realisasi ticket SLA for FCR and unweighted agent SLA for NON FCR', async () => {
+  it('memakai rumus SLA yang sama untuk semua departemen', async () => {
     const { service } = setup([
       {
         department: 'FCR',
@@ -129,8 +139,25 @@ describe('department dashboard', () => {
       { department: 'NON FCR', name: 'C', slaEligible: 0, slaAchieved: 0 },
     ]);
     const result = await service.getSummary({});
-    expect(result[0].slaPercentage).toBe(75);
-    expect(result[1].slaPercentage).toBe(50);
+
+    // FCR memakai slaAchieved/slaEligible (4/10), bukan rasio realisasi (3/4).
+    // Angka realisasi sengaja dibuat berbeda di fixture supaya ketahuan kalau
+    // suatu saat rumusnya kembali memakai kolom itu.
+    expect(result[0].slaPercentage).toBe(40);
+
+    // NON FCR memakai angka ringkasan (10/11), bukan rata-rata persentase
+    // antar agent tanpa bobot yang akan menghasilkan 50.
+    expect(result[1].slaPercentage).toBe(90.91);
+
+    // UNRESOLVED tetap tanpa angka: tiketnya belum selesai.
     expect(result[2].slaPercentage).toBeNull();
+  });
+
+  it('tidak memberi angka SLA saat tidak ada tiket valid', async () => {
+    const { service } = setup([
+      { department: 'FCR', name: null, slaEligible: 0, slaAchieved: 0 },
+    ]);
+    const result = await service.getSummary({});
+    expect(result[0].slaPercentage).toBeNull();
   });
 });

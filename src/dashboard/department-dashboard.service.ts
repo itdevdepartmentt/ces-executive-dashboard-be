@@ -95,17 +95,23 @@ export class DepartmentDashboardService {
       const agentRows = rows.filter(
         (row) => row.department === department && row.name !== null,
       );
-      const agentSla = agentRows
-        .filter((row) => row.slaEligible > 0)
-        .map((row) => (row.slaAchieved / row.slaEligible) * 100);
+      /**
+       * Satu rumus untuk semua departemen: tiket valid yang IN SLA dibagi
+       * tiket valid, berbobot jumlah tiket — sama persis dengan baris agent
+       * di bawahnya dan dengan keterangan yang tertulis di kartu.
+       *
+       * Sebelumnya FCR memakai rasio realisasi (yang disaring lagi per
+       * channel) dan NON FCR memakai rata-rata persentase antar agent tanpa
+       * bobot. Akibatnya angka besar di kartu bisa menunjukkan 100% sementara
+       * baris agent di bawahnya 0% dan 50%.
+       *
+       * UNRESOLVED sengaja tetap tanpa angka: isinya tiket yang belum selesai,
+       * dan SLA baru bermakna setelah ada waktu penyelesaian.
+       */
       const departmentSla =
-        department === 'FCR'
-          ? summary && summary.realisasiEligible > 0
-            ? (summary.realisasiAchieved / summary.realisasiEligible) * 100
-            : null
-          : department === 'NON FCR' && agentSla.length
-            ? agentSla.reduce((sum, value) => sum + value, 0) / agentSla.length
-            : null;
+        department !== 'UNRESOLVED' && summary && summary.slaEligible > 0
+          ? (summary.slaAchieved / summary.slaEligible) * 100
+          : null;
       return {
         department,
         total: summary?.total ?? 0,
@@ -113,16 +119,24 @@ export class DepartmentDashboardService {
         closed: summary?.closed ?? 0,
         slaPercentage:
           departmentSla === null ? null : Math.round(departmentSla * 100) / 100,
-        breakdown: agentRows.map((row) => ({
-          name: row.name!,
-          total: row.total,
-          open: row.open,
-          closed: row.closed,
-          slaPercentage:
-            row.slaEligible > 0
-              ? Math.round((row.slaAchieved / row.slaEligible) * 10000) / 100
-              : null,
-        })),
+        breakdown: agentRows.map((row) => {
+          // Angka di balik persentasenya. Jumlahnya adalah tiket valid, bukan
+          // seluruh tiket agent — tiket uji coba dan duplikat tidak ikut,
+          // jadi inSla + outSla bisa lebih kecil dari total.
+          const eligible = row.slaEligible ?? 0;
+          const inSla = row.slaAchieved ?? 0;
+
+          return {
+            name: row.name!,
+            total: row.total,
+            open: row.open,
+            closed: row.closed,
+            inSla,
+            outSla: eligible - inSla,
+            slaPercentage:
+              eligible > 0 ? Math.round((inSla / eligible) * 10000) / 100 : null,
+          };
+        }),
       };
     });
   }
