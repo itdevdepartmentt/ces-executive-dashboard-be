@@ -13,6 +13,10 @@ import { PrismaService } from 'prisma/prisma.service';
 import { DailyOcaTicketProcessor } from '../processor/daily-oca-ticket-processor';
 import { OCA_AUTH, OCA_ENDPOINTS } from '../utils/oca-api.constant';
 import { OcaReportSchedulerService } from './oca-report-scheduler.service';
+import {
+  shouldProcessOcaTicket,
+  StoredOcaTicketSnapshot,
+} from '../utils/oca-ticket-sync.utils';
 
 export type OcaSyncStatus =
   | 'success'
@@ -215,22 +219,18 @@ export class OcaTicketSchedulerService {
 
           const ticketNumbers = tickets.map((t) => t.ticket_number);
 
-          const dbRows = await this.prisma.$queryRaw<
-            { ticket_number: string; last_update: Date | null }[]
-          >`
-        SELECT "ticket_number", "last_update"
+          const dbRows = await this.prisma.$queryRaw<StoredOcaTicketSnapshot[]>`
+        SELECT "ticket_number", "last_update", "last_status", "department", "assignee"
         FROM "RawOca"
         WHERE "ticket_number" = ANY(${ticketNumbers});
 `;
           const dbMap = new Map(
-            dbRows.map((r) => [r.ticket_number, r.last_update?.getTime()]),
+            dbRows.map((r) => [r.ticket_number, r]),
           );
 
-          const ticketsToProcess = tickets.filter((t) => {
-            const dbLast = dbMap.get(t.ticket_number);
-            if (!dbLast) return true; // new ticket
-            return new Date(t.updated_at).getTime() > dbLast;
-          });
+          const ticketsToProcess = tickets.filter((t) =>
+            shouldProcessOcaTicket(t, dbMap.get(t.ticket_number)),
+          );
 
           ticketsToProcessTotal += ticketsToProcess.length;
           this.logger.log(
