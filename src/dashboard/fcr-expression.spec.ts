@@ -12,11 +12,14 @@ describe('dashboard FCR selection', () => {
     (source) => {
       const sql = fcrExpression('realisasi', source);
       expect(sql.sql).toContain('"isFcr" = true AND "isFcrRealisasi" = true');
-      expect(sql.sql).toContain("ILIKE 'close%'");
-      expect(sql.sql).toContain("ILIKE 'resolve%'");
       expect(sql.sql).toContain('BTRIM("eskalasi")');
       expect(sql.sql).not.toContain('inSla');
       expect(sql.values).toEqual([]);
+
+      // Tiket yang masih berjalan ikut dihitung realisasi, jadi status tidak
+      // lagi disaring di sini.
+      expect(sql.sql).not.toContain("ILIKE 'close%'");
+      expect(sql.sql).not.toContain("ILIKE 'resolve%'");
     },
   );
 });

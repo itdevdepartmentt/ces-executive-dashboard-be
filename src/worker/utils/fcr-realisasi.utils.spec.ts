@@ -12,12 +12,15 @@ describe('FCR Realisasi eligibility', () => {
       ).toBe(true);
     },
   );
+  // Status tiket tidak lagi menentukan realisasi. Tiket yang masih berjalan
+  // ikut dihitung, supaya angka SLA realisasi tidak terkunci di 100% karena
+  // populasinya hanya berisi tiket yang sudah selesai.
   it.each(['Open', 'Pending', 'Eskalasi IT', '', null, undefined])(
-    'rejects incomplete status %s',
+    'tetap menerima tiket yang belum selesai: %s',
     (status) => {
       expect(
         qualifiesFcrRealisasi({ isFcr: true, status, noEscalation: true }),
-      ).toBe(false);
+      ).toBe(true);
     },
   );
   it('rejects NON FCR KIP and escalated tickets even when closed', () => {
@@ -63,8 +66,9 @@ describe('FCR Realisasi eligibility', () => {
     expect(
       calculateOcaFcrRealisasi({ ...data, isFcr: false }).isFcrRealisasi,
     ).toBe(false);
+    // Status tidak lagi membatalkan realisasi.
     expect(
       calculateOcaFcrRealisasi({ ...data, status: 'open' }).isFcrRealisasi,
-    ).toBe(false);
+    ).toBe(true);
   });
 });

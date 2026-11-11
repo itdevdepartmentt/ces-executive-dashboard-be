@@ -3,16 +3,23 @@
  * Translates the Excel formulas from "FCR Realisasi.xlsx" sheet "Revise".
  */
 
+/**
+ * Status tiket sengaja tidak ikut diperiksa di sini.
+ *
+ * Sebelumnya realisasi mensyaratkan tiket sudah Closed/Resolved, sehingga
+ * tiket yang masih berjalan tidak pernah masuk hitungan. Akibatnya angka SLA
+ * realisasi terkunci di sekitar 100%: populasinya hanya berisi tiket yang
+ * sudah selesai, dan tiket selesai hampir selalu terhitung tepat waktu.
+ *
+ * `status` tetap ada di parameter karena pemanggilnya masih mengirimnya, dan
+ * membuangnya akan menyentuh beberapa berkas tanpa manfaat langsung.
+ */
 export function qualifiesFcrRealisasi(data: {
   isFcr: boolean;
-  status: string | null | undefined;
+  status?: string | null;
   noEscalation: boolean;
 }): boolean {
-  return (
-    data.isFcr &&
-    /^(close|resolve)/i.test((data.status ?? '').trim()) &&
-    data.noEscalation
-  );
+  return data.isFcr && data.noEscalation;
 }
 
 export function calculateOcaFcrRealisasi(data: {
