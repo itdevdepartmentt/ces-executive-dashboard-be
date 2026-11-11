@@ -212,6 +212,16 @@ export function calculateSlaStatus(row: any): boolean {
 
 // rules.constant.ts
 
+/**
+ * Jumlah MSISDN yang sudah dihitung sebagai permintaan massal. Tiket dengan
+ * MSISDN sebanyak ini atau lebih tidak pernah masuk FCR, berapa pun cepatnya
+ * diselesaikan, karena penanganannya memang bukan satu kali kontak.
+ *
+ * Jadi 1 sampai 5 MSISDN masih FCR, 6 ke atas massal. Sebelumnya ambang ini
+ * 10, sehingga tiket ber-MSISDN 6 sampai 9 dulu terhitung FCR.
+ */
+export const MIN_MSISDN_MASSAL = 6;
+
 export function calculateFcrStatus(row: any): boolean {
   // 1. Map columns safely (Trim strings to ensure " " isn't counted as value)
   const idRemedy = (row['ID Remedy_NO'] || '').toString().trim();
@@ -229,14 +239,15 @@ export function calculateFcrStatus(row: any): boolean {
   const isEskalasiEmpty = eskalasiId === '' || eskalasiId === '-';
 
   // 4. Apply FCR Logic
-  // Rule: ID & Eskalasi MUST be empty AND MSISDN < 10
-  if (isIdRemedyEmpty && isEskalasiEmpty && msisdnCount < 10) {
+  // Rule: ID & Eskalasi MUST be empty AND MSISDN 1-5
+  if (isIdRemedyEmpty && isEskalasiEmpty && msisdnCount < MIN_MSISDN_MASSAL) {
     // return 'FCR';
     return true;
   }
 
   // 5. Default Fallback (NON FCR)
-  // This covers the inverse: ID is present OR Eskalasi is present OR MSISDN >= 10
+  // This covers the inverse: ID is present OR Eskalasi is present OR
+  // MSISDN >= 6 (sudah dihitung permintaan massal)
   // return 'NON FCR';
   return false;
 }
