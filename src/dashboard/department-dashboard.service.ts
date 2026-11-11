@@ -13,6 +13,7 @@ interface DepartmentRow {
   closed: number;
   slaEligible: number;
   slaAchieved: number;
+  openInSla: number;
   realisasiEligible: number;
   realisasiAchieved: number;
 }
@@ -60,15 +61,28 @@ export class DepartmentDashboardService {
           COALESCE(NULLIF(NULLIF(BTRIM(assignee), ''), '-'), 'Belum ditugaskan') AS agent,
           COALESCE(NULLIF(NULLIF(BTRIM(last_status), ''), '-'), 'Status belum diisi') AS status,
           COALESCE(BTRIM(last_status) ILIKE 'close%' OR BTRIM(last_status) ILIKE 'resolve%', false) AS closed,
-          "statusTiket", "inSla", channel,
+          "statusTiket", "inSla", channel, product, ticket_created,
           ${fcrExpression('realisasi', 'OCA')} AS realisasi
         FROM "RawOca" WHERE ${Prisma.join(conditions, ' AND ')}
+      ), dinilai AS (
+        SELECT *,
+          -- Closed/Resolved retains its recorded SLA; open tickets age at query time.
+          CASE
+            WHEN closed THEN COALESCE("inSla", false)
+            WHEN ticket_created IS NULL OR ticket_created > NOW() THEN false
+            WHEN UPPER(BTRIM(COALESCE(product, ''))) = 'CONNECTIVITY'
+              THEN NOW() - ticket_created <= interval '3 hours'
+            WHEN UPPER(BTRIM(COALESCE(product, ''))) = 'SOLUTION'
+              THEN NOW() - ticket_created <= interval '6 hours'
+            ELSE false
+          END AS in_sla_kini
+        FROM normalized
       ), tickets AS (
         SELECT *, CASE
           WHEN department IN ('FCR', 'DEPARTEMEN FCR', 'DEPARTMENT FCR') THEN 'FCR'
           WHEN department IN ('NON FCR', 'DEPARTEMEN NON FCR', 'DEPARTMENT NON FCR') THEN 'NON FCR'
           WHEN department = 'TIKET UNRESOLVED' THEN 'UNRESOLVED'
-        END AS department_key FROM normalized
+        END AS department_key FROM dinilai
       )
       SELECT department_key AS department,
         CASE WHEN GROUPING(CASE WHEN department_key = 'UNRESOLVED' THEN status ELSE agent END) = 1
@@ -77,7 +91,8 @@ export class DepartmentDashboardService {
         COUNT(DISTINCT ticket_id) FILTER (WHERE NOT closed)::int AS open,
         COUNT(DISTINCT ticket_id) FILTER (WHERE closed)::int AS closed,
         COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket")::int AS "slaEligible",
-        COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket" AND "inSla")::int AS "slaAchieved",
+        COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket" AND in_sla_kini)::int AS "slaAchieved",
+        COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket" AND NOT closed AND in_sla_kini)::int AS "openInSla",
         COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket" AND realisasi
           AND channel ILIKE ANY (ARRAY['email', 'livechat', 'whatsapp', 'socmed', 'callcenter']))::int AS "realisasiEligible",
         COUNT(DISTINCT ticket_id) FILTER (WHERE "statusTiket" AND realisasi AND "inSla"
@@ -105,8 +120,7 @@ export class DepartmentDashboardService {
        * bobot. Akibatnya angka besar di kartu bisa menunjukkan 100% sementara
        * baris agent di bawahnya 0% dan 50%.
        *
-       * UNRESOLVED sengaja tetap tanpa angka: isinya tiket yang belum selesai,
-       * dan SLA baru bermakna setelah ada waktu penyelesaian.
+       * UNRESOLVED tetap menampilkan rincian status tanpa persentase SLA.
        */
       const departmentSla =
         department !== 'UNRESOLVED' && summary && summary.slaEligible > 0
@@ -132,9 +146,12 @@ export class DepartmentDashboardService {
             open: row.open,
             closed: row.closed,
             inSla,
+            openInSla: row.openInSla ?? 0,
             outSla: eligible - inSla,
             slaPercentage:
-              eligible > 0 ? Math.round((inSla / eligible) * 10000) / 100 : null,
+              eligible > 0
+                ? Math.round((inSla / eligible) * 10000) / 100
+                : null,
           };
         }),
       };

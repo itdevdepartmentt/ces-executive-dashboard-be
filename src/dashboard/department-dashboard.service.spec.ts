@@ -71,6 +71,7 @@ describe('department dashboard', () => {
           open: 1,
           closed: 1,
           inSla: 1,
+          openInSla: 0,
           outSla: 1,
           slaPercentage: 50,
         },
@@ -80,6 +81,7 @@ describe('department dashboard', () => {
           open: 0,
           closed: 1,
           inSla: 0,
+          openInSla: 0,
           outSla: 0,
           slaPercentage: null,
         },
@@ -109,7 +111,7 @@ describe('department dashboard', () => {
     expect(sql.sql).toContain('ticket_created >= ?::timestamptz');
     expect(sql.sql).toContain('ticket_created < ?::timestamptz');
     expect(sql.sql).toContain('"isFcrRealisasi" = true');
-    expect(sql.sql).toContain('FILTER (WHERE "statusTiket" AND "inSla")');
+    expect(sql.sql).toContain('FILTER (WHERE "statusTiket" AND in_sla_kini)');
     expect(sql.sql).toContain(
       "AND (department_key <> 'UNRESOLVED' OR NOT closed)",
     );
@@ -159,5 +161,32 @@ describe('department dashboard', () => {
     ]);
     const result = await service.getSummary({});
     expect(result[0].slaPercentage).toBeNull();
+  });
+
+  it('includes Open IN SLA in total SLA and keeps OSL separate from all open tickets', async () => {
+    const counts = {
+      total: 12,
+      open: 7,
+      closed: 5,
+      slaEligible: 10,
+      slaAchieved: 8,
+      openInSla: 4,
+    };
+    const { service } = setup([
+      { department: 'NON FCR', name: null, ...counts },
+      { department: 'NON FCR', name: 'Agent A', ...counts },
+    ]);
+    const result = (await service.getSummary({}))[1];
+    expect(result.slaPercentage).toBe(80);
+    expect(result.breakdown[0]).toEqual({
+      name: 'Agent A',
+      total: 12,
+      open: 7,
+      closed: 5,
+      inSla: 8,
+      openInSla: 4,
+      outSla: 2,
+      slaPercentage: 80,
+    });
   });
 });
