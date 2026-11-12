@@ -68,7 +68,7 @@ export class OcaOmnixService {
                 "last_status", 
                 "statusTiket", 
                 ${filter.isFcr === true ? currentSlaExpression('OCA').sql : '"inSla"'} AS "inSla",
-                ${slaEligibilityExpression(filter.isFcr, 'OCA').sql} AS "slaEligible",
+                ${slaEligibilityExpression(filter.isFcr, 'OCA', filter.fcrType).sql} AS "slaEligible",
                 ${isFcrColOca} as "isFcr",
                 "ticket_created" as "ticket_timestamp",
                 "channel"
@@ -81,7 +81,7 @@ export class OcaOmnixService {
                 "ticket_status_name" as "last_status", 
                 "statusTiket", 
                 ${filter.isFcr === true ? currentSlaExpression('OMNIX').sql : '"inSla"'} AS "inSla",
-                ${slaEligibilityExpression(filter.isFcr, 'OMNIX').sql} AS "slaEligible",
+                ${slaEligibilityExpression(filter.isFcr, 'OMNIX', filter.fcrType).sql} AS "slaEligible",
                 ${isFcrColOmnix} as "isFcr",
                 "date_start_interaction" as "ticket_timestamp",
                 "channel_name" as "channel"
@@ -93,7 +93,7 @@ export class OcaOmnixService {
                 'closed' as "last_status",
                 "statusTiket",
                 ${filter.isFcr === true ? currentSlaExpression('CALL').sql : '"inSla"'} AS "inSla",
-                ${slaEligibilityExpression(filter.isFcr, 'CALL').sql} AS "slaEligible",
+                ${slaEligibilityExpression(filter.isFcr, 'CALL', filter.fcrType).sql} AS "slaEligible",
                 ${isFcrColCall} as "isFcr",
                 "update_stamp" as "ticket_timestamp",
                 "unit_type" as "channel"
@@ -443,7 +443,7 @@ ORDER BY 1 ASC;
       -- 1. DATA FROM OCA (Your existing structure)
       SELECT 
         "channel", "statusTiket", ${filter.isFcr === true ? currentSlaExpression('OCA') : Prisma.sql`"inSla"`} AS "inSla",
-        ${slaEligibilityExpression(filter.isFcr, 'OCA')} AS "slaEligible", "last_status", "product",
+        ${slaEligibilityExpression(filter.isFcr, 'OCA', filter.fcrType)} AS "slaEligible", "last_status", "product",
         "resolve_time", "ticket_created", ${isFcrColOca} as "isFcr", "isPareto",
         'OCA' as "source_origin", -- Tagging the source just in case
         'OCA' as "source_kip" 
@@ -458,7 +458,7 @@ ORDER BY 1 ASC;
         "channel_name" as "channel",                              -- e.g. 'instagram' or 'whatsapp'
         "statusTiket",                          -- MAP: Omnix column -> Standard Name
         ${filter.isFcr === true ? currentSlaExpression('OMNIX') : Prisma.sql`"inSla"`} AS "inSla",
-        ${slaEligibilityExpression(filter.isFcr, 'OMNIX')} AS "slaEligible",
+        ${slaEligibilityExpression(filter.isFcr, 'OMNIX', filter.fcrType)} AS "slaEligible",
         "ticket_status_name" as "last_status",              -- MAP: Omnix column -> Standard Name
         "product",                                 -- MAP: Hardcode if Omnix doesn't have product types
         "date_close" as "resolve_time",             -- MAP: Omnix timestamp -> Standard Name
@@ -476,7 +476,7 @@ ORDER BY 1 ASC;
         "unit_type" as "channel",
         "statusTiket",
         ${filter.isFcr === true ? currentSlaExpression('CALL') : Prisma.sql`"inSla"`} AS "inSla",
-        ${slaEligibilityExpression(filter.isFcr, 'CALL')} AS "slaEligible",
+        ${slaEligibilityExpression(filter.isFcr, 'CALL', filter.fcrType)} AS "slaEligible",
         'closed' as "last_status",
         "product",
         NULL::timestamp as "resolve_time",

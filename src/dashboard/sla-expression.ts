@@ -26,12 +26,22 @@ export function currentSlaExpression(source: Source): Prisma.Sql {
   END`;
 }
 
-/** The FCR SLA population is valid KIP FCR tickets with no escalation, in any department. */
+/**
+ * Populasi SLA di dashboard FCR mengikuti tab yang dipilih: tab KIP memakai
+ * seluruh tiket valid FCR berdasarkan KIP, tab Realisasi hanya yang lolos
+ * realisasi (tanpa eskalasi).
+ *
+ * Sebelumnya populasinya selalu realisasi apa pun tabnya. Karena realisasi
+ * adalah bagian dari KIP, kedua tab berakhir menghitung SLA dari himpunan
+ * yang sama, sehingga angkanya identik sampai dua desimal padahal jumlah
+ * tiket yang ditampilkan berbeda.
+ */
 export function slaEligibilityExpression(
   isFcr: boolean | undefined,
   source: Source,
+  fcrType: 'kip' | 'realisasi' | undefined,
 ): Prisma.Sql {
   return isFcr === true
-    ? Prisma.sql`("statusTiket" AND ${fcrExpression('realisasi', source)})`
+    ? Prisma.sql`("statusTiket" AND ${fcrExpression(fcrType, source)})`
     : Prisma.sql`"statusTiket"`;
 }

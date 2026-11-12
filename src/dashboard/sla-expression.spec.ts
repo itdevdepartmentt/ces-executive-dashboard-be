@@ -19,9 +19,9 @@ describe('dashboard SLA expressions', () => {
     expect(currentSlaExpression('CALL').sql).toBe('COALESCE("inSla", false)');
   });
   it.each(['OCA', 'OMNIX', 'CALL'] as const)(
-    'uses valid KIP FCR with no escalation for %s, across departments',
+    'tab Realisasi: valid KIP FCR tanpa eskalasi untuk %s, lintas departemen',
     (source) => {
-      const sql = slaEligibilityExpression(true, source).sql;
+      const sql = slaEligibilityExpression(true, source, 'realisasi').sql;
       expect(sql).toContain('"statusTiket"');
       expect(sql).toContain('"isFcr" = true');
       expect(sql).toContain('BTRIM("eskalasi")');
@@ -29,10 +29,34 @@ describe('dashboard SLA expressions', () => {
       expect(sql).not.toContain('department');
     },
   );
-  it.each([undefined, false])(
-    'preserves ordinary dashboard eligibility (%s)',
-    (isFcr) => {
-      expect(slaEligibilityExpression(isFcr, 'OCA').sql).toBe('"statusTiket"');
+  it.each(['OCA', 'OMNIX', 'CALL'] as const)(
+    'tab KIP: seluruh valid FCR KIP untuk %s, tanpa syarat eskalasi',
+    (source) => {
+      const sql = slaEligibilityExpression(true, source, 'kip').sql;
+      expect(sql).toBe('("statusTiket" AND "isFcr")');
+      expect(sql).not.toContain('eskalasi');
+    },
+  );
+  it('membedakan populasi SLA antara tab KIP dan Realisasi', () => {
+    // Regresi: dulu populasinya selalu realisasi, sehingga kedua tab
+    // menampilkan angka SLA identik walau jumlah tiketnya berbeda.
+    for (const source of ['OCA', 'OMNIX', 'CALL'] as const) {
+      expect(slaEligibilityExpression(true, source, 'kip').sql).not.toBe(
+        slaEligibilityExpression(true, source, 'realisasi').sql,
+      );
+    }
+  });
+  it.each([
+    [undefined, 'kip'],
+    [false, 'kip'],
+    [undefined, 'realisasi'],
+    [false, 'realisasi'],
+  ] as const)(
+    'dashboard biasa tidak terpengaruh tab (isFcr=%s, %s)',
+    (isFcr, fcrType) => {
+      expect(slaEligibilityExpression(isFcr, 'OCA', fcrType).sql).toBe(
+        '"statusTiket"',
+      );
     },
   );
 });
